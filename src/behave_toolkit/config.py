@@ -100,4 +100,3 @@ def load_config(raw: Mapping[str, Any]) -> ToolkitConfig:
         )
 
     return ToolkitConfig(version=version, objects=objects)
-

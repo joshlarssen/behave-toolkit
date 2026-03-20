@@ -1,6 +1,7 @@
 # behave-toolkit
 
-`behave-toolkit` is an opinionated toolkit for making large `behave` suites easier to configure, understand, and evolve.
+`behave-toolkit` is an opinionated toolkit for making large `behave` suites
+easier to configure, understand, and evolve.
 
 The first bootstrap version focuses on a clean project foundation:
 
@@ -60,6 +61,12 @@ After installation, the loaded manager is available on `context.toolkit` by defa
 
 ## Development
 
+Install the package in editable mode with development tools:
+
+```bash
+pip install -e ".[dev]"
+```
+
 Run the test suite:
 
 ```bash
@@ -72,5 +79,13 @@ Run a quick syntax validation:
 python -m compileall src tests
 ```
 
-The GitHub Actions CI workflow runs the same validation steps on pushes and pull requests to `main`, using a small Python matrix on Ubuntu and Windows.
+Run static analysis:
+
+```bash
+python -m mypy src tests
+python -m pylint src tests
+```
+
+The GitHub Actions CI workflow runs the same validation steps on pushes and
+pull requests to `main`, using a small Python matrix on Ubuntu and Windows.
 

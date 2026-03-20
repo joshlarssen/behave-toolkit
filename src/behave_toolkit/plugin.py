@@ -26,7 +26,12 @@ class LifecycleManager:
         return [spec for spec in self.config.objects.values() if spec.scope == parsed_scope]
 
 
-def install(context: object, config_path: str | Path, *, namespace: str = "toolkit") -> LifecycleManager:
+def install(
+    context: object,
+    config_path: str | Path,
+    *,
+    namespace: str = "toolkit",
+) -> LifecycleManager:
     """Load config and attach a manager object to the Behave context.
 
     The implementation intentionally stays small in the bootstrap version so the
@@ -45,4 +50,3 @@ def install(context: object, config_path: str | Path, *, namespace: str = "toolk
     )
     setattr(context, namespace, manager)
     return manager
-

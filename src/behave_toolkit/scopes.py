@@ -29,4 +29,3 @@ class Scope(str, Enum):
             raise ValueError(
                 f"Unsupported scope '{value}'. Expected one of: {allowed}."
             ) from exc
-
