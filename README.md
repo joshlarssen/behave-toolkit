@@ -86,6 +86,7 @@ python -m mypy src tests
 python -m pylint src tests
 ```
 
-The GitHub Actions CI workflow runs the same validation steps on pushes and
-pull requests to `main`, using a small Python matrix on Ubuntu and Windows.
+The GitHub Actions CI workflow runs static analysis once on Ubuntu with Python
+3.11, then runs the unit tests in a smaller Ubuntu and Windows matrix for
+Python 3.11 and 3.12.
 
