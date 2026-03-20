@@ -1,0 +1,16 @@
+version: 1
+objects:
+  api_client:
+    factory: my_project.clients.ApiClient
+    scope: scenario
+    kwargs:
+      base_url: https://example.test
+    cleanup: close
+
+  browser:
+    factory: my_project.browser.build_browser
+    scope: feature
+    args:
+      - chromium
+    cleanup: quit
+

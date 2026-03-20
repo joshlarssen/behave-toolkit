@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "behave-toolkit"
+version = "0.1.0"
+description = "Toolkit helpers for Behave projects."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0",
+  "behave>=1.3.3",
+]
+authors = [
+  { name = "Denis" }
+]
+keywords = ["behave", "bdd", "testing", "qa", "yaml"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Software Development :: Testing",
+]
+
+[project.urls]
+Homepage = "https://github.com/<your-account>/behave-toolkit"
+Issues = "https://github.com/<your-account>/behave-toolkit/issues"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
