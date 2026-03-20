@@ -72,3 +72,5 @@ Run a quick syntax validation:
 python -m compileall src tests
 ```
 
+The GitHub Actions CI workflow runs the same validation steps on pushes and pull requests to `main`, using a small Python matrix on Ubuntu and Windows.
+
