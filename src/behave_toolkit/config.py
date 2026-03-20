@@ -21,6 +21,10 @@ class ObjectSpec:
     cleanup: str | None = None
     inject_as: str | None = None
 
+    @property
+    def context_name(self) -> str:
+        return self.inject_as or self.name
+
 
 @dataclass(frozen=True, slots=True)
 class ToolkitConfig:

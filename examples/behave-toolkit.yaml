@@ -1,5 +1,10 @@
 version: 1
 objects:
+  session_client:
+    factory: my_project.session.build_session_client
+    scope: global
+    cleanup: close
+
   api_client:
     factory: my_project.clients.ApiClient
     scope: scenario
@@ -7,9 +12,10 @@ objects:
       base_url: https://example.test
     cleanup: close
 
-  browser:
+  browser_session:
     factory: my_project.browser.build_browser
     scope: feature
+    inject_as: browser
     args:
       - chromium
     cleanup: quit

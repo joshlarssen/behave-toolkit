@@ -39,13 +39,13 @@ jobs:
         run: python -m pip install -e .[dev]
 
       - name: Run mypy
-        run: python -m mypy src tests
+        run: python -m mypy src tests test_support.py
 
       - name: Run pylint
-        run: python -m pylint src tests
+        run: python -m pylint src tests test_support.py
 
       - name: Run compile checks
-        run: python -m compileall src tests
+        run: python -m compileall src tests test_support.py
 
   tests:
     name: Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
