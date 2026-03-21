@@ -134,8 +134,8 @@ pip install -e ".[docs]"
 python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 ```
 
-The generated Sphinx project is configured for the `Furo` theme and `MyST`
-Markdown parsing.
+The generated Sphinx project is configured for the `Furo` theme,
+`sphinx-design` cards, and `MyST` Markdown parsing.
 
 ## Development
 

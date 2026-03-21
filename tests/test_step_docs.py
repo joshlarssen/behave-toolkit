@@ -21,15 +21,20 @@ class StepDocumentationTests(unittest.TestCase):
             self.assertTrue((output_dir / "steps" / "when.md").is_file())
             self.assertTrue((output_dir / "types" / "index.md").is_file())
 
+            conf_text = (output_dir / "conf.py").read_text(encoding="utf-8")
+            self.assertIn("'sphinx_design'", conf_text)
+
             root_index = (output_dir / "index.md").read_text(encoding="utf-8")
             self.assertIn("```{toctree}", root_index)
             self.assertIn("steps/index", root_index)
             self.assertIn("types/index", root_index)
+            self.assertIn(":::{grid-item-card} Step reference", root_index)
 
             steps_index = (output_dir / "steps" / "index.md").read_text(encoding="utf-8")
             self.assertIn("given.md", steps_index)
             self.assertIn("when.md", steps_index)
             self.assertIn("then.md", steps_index)
+            self.assertIn(":::{grid-item-card} Given", steps_index)
 
             given_index = (output_dir / "steps" / "given.md").read_text(encoding="utf-8")
             when_index = (output_dir / "steps" / "when.md").read_text(encoding="utf-8")
