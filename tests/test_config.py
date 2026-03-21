@@ -58,6 +58,46 @@ class ConfigLoadingTests(unittest.TestCase):
             "https://example.test",
         )
 
+    def test_parser_helpers_are_loaded_from_root_section(self) -> None:
+        config = load_config(
+            {
+                "parsers": {
+                    "step_matcher": "cfparse",
+                    "types": {
+                        "Status": {
+                            "enum": "demo.types.Status",
+                            "case_sensitive": False,
+                        },
+                        "Priority": "demo.types.parse_priority",
+                    },
+                },
+                "objects": {},
+            }
+        )
+
+        self.assertEqual(config.parsers.step_matcher, "cfparse")
+        self.assertEqual(config.parsers.types["Status"].enum, "demo.types.Status")
+        self.assertFalse(config.parsers.types["Status"].case_sensitive)
+        self.assertEqual(
+            config.parsers.types["Priority"].converter,
+            "demo.types.parse_priority",
+        )
+
+    def test_parser_type_requires_exactly_one_source(self) -> None:
+        with self.assertRaises(ConfigError):
+            load_config(
+                {
+                    "parsers": {
+                        "types": {
+                            "Status": {
+                                "converter": "demo.types.parse_status",
+                                "enum": "demo.types.Status",
+                            }
+                        }
+                    }
+                }
+            )
+
     def test_invalid_objects_section_raises_config_error(self) -> None:
         with self.assertRaises(ConfigError):
             load_config({"objects": []})

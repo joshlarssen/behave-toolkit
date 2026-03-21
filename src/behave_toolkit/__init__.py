@@ -1,7 +1,16 @@
 """Public package interface for behave-toolkit."""
 
-from .config import ObjectSpec, ToolkitConfig, load_config, load_yaml_file, load_yaml_text
+from .config import (
+    ObjectSpec,
+    ParserConfig,
+    ParserTypeSpec,
+    ToolkitConfig,
+    load_config,
+    load_yaml_file,
+    load_yaml_text,
+)
 from .errors import ConfigError, DocumentationError, IntegrationError, ToolkitError
+from .parsers import configure_parsers
 from .plugin import (
     LifecycleManager,
     activate_feature_scope,
@@ -20,6 +29,8 @@ __all__ = [
     "IntegrationError",
     "LifecycleManager",
     "ObjectSpec",
+    "ParserConfig",
+    "ParserTypeSpec",
     "Scope",
     "ToolkitConfig",
     "ToolkitError",
@@ -27,6 +38,7 @@ __all__ = [
     "activate_global_scope",
     "activate_scenario_scope",
     "activate_scope",
+    "configure_parsers",
     "generate_step_docs",
     "install",
     "load_config",

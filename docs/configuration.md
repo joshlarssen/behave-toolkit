@@ -9,6 +9,7 @@
 | `version` | `int` | Config format version. Defaults to `1`. |
 | `variables` | mapping | Reusable literal values referenced with `$var`. |
 | `objects` | mapping | Named object definitions managed by the toolkit. |
+| `parsers` | mapping | Optional Behave parser/type helpers configured at import time. |
 
 ## Object fields
 
@@ -92,3 +93,28 @@ Behave context. This catches problems early, including:
 If you want to inject an instance under a shorter or more domain-specific name,
 use `inject_as`. Otherwise the toolkit exposes it with the object name.
 ```
+
+## Parser configuration
+
+The optional `parsers` section configures Behave custom types and the default
+step matcher.
+
+| Field | Purpose |
+| --- | --- |
+| `step_matcher` | Default Behave matcher to use while step modules are imported. |
+| `types` | Mapping of custom type names to parser helper specs. |
+
+Each custom type can either reference an existing converter or generate one from
+an enum:
+
+| Field | Purpose |
+| --- | --- |
+| `converter` | Import path to a callable that converts raw text. |
+| `enum` | Import path to an `Enum` class. The toolkit builds the converter for you. |
+| `pattern` | Regex pattern attached to the converter if it does not already define one. |
+| `regex_group_count` | Optional regex group count metadata for advanced parse patterns. |
+| `matcher` | Per-type matcher override for registration (`parse` or `cfparse`). |
+| `case_sensitive` | Enum helper option controlling case-sensitive lookup. |
+| `lookup` | Enum helper mode: `value` or `name`. |
+
+See [Parser helpers](parser-helpers.md) for end-to-end examples.

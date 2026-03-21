@@ -50,9 +50,15 @@ objects:
 ```python
 from pathlib import Path
 
-from behave_toolkit import activate_feature_scope, activate_scenario_scope, install
+from behave_toolkit import (
+    activate_feature_scope,
+    activate_scenario_scope,
+    configure_parsers,
+    install,
+)
 
 CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
+configure_parsers(CONFIG_PATH)
 
 
 def before_all(context):
@@ -71,18 +77,23 @@ def before_scenario(context, scenario):
 
 ## What happens at runtime
 
-1. `install()` loads and validates the YAML file, attaches the manager under
+1. `configure_parsers()` runs at import time. If the config defines a
+   `parsers:` section, it sets the step matcher and registers custom types
+   before Behave imports step modules.
+2. `install()` loads and validates the YAML file, attaches the manager under
    `context.toolkit`, and activates global objects by default.
-2. `activate_feature_scope()` creates feature-scoped objects and registers
+3. `activate_feature_scope()` creates feature-scoped objects and registers
    cleanup with Behave.
-3. `activate_scenario_scope()` creates scenario-scoped objects and registers
+4. `activate_scenario_scope()` creates scenario-scoped objects and registers
    cleanup with Behave.
-4. Instances are injected onto the Behave context using either `inject_as` or
+5. Instances are injected onto the Behave context using either `inject_as` or
    the object name itself.
 
 ## Good first follow-ups
 
 - Read [Configuration model](configuration.md) to understand the object schema.
+- Read [Parser helpers](parser-helpers.md) if you want to configure custom
+  Behave types from YAML.
 - Read [Lifecycle hooks](lifecycle.md) to understand hook order and cleanup.
 - Read [Step documentation](step-documentation.md) if you want a reference site
   for your own step library.

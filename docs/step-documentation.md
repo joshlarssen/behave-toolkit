@@ -9,8 +9,10 @@ toolkit repository itself.
 After a plain `pip install behave-toolkit`, you can:
 
 1. use the Python API in `features/environment.py` for lifecycle/config wiring
-2. run `behave-toolkit-docs` to generate documentation sources
-3. run `python -m sphinx ...` to build the final HTML site
+2. call `configure_parsers(CONFIG_PATH)` at import time if your config defines
+   custom Behave types
+3. run `behave-toolkit-docs` to generate documentation sources
+4. run `python -m sphinx ...` to build the final HTML site
 
 ## Generate the sources
 
@@ -45,12 +47,14 @@ python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 
 ## Recommended type-registration pattern
 
-Custom parse types should be registered at import time, before step loading.
-The safest pattern is:
+Custom parse types should still be configured at import time, before step
+loading. The recommended pattern is:
 
-1. define converters in a dedicated support module
-2. call `register_type(...)` from `features/environment.py`
-3. import the resulting types in your step modules if you want annotations
+1. define converters or enums in a dedicated support module
+2. declare them in `behave-toolkit.yaml` under `parsers:`
+3. call `configure_parsers(CONFIG_PATH)` from `features/environment.py`
+4. import the resulting Python types in your step modules if you want
+   annotations
 
 This keeps both Behave itself and the generated documentation aligned.
 

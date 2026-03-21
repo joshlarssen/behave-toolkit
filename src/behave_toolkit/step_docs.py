@@ -13,7 +13,7 @@ import re
 import shutil
 import sys
 import textwrap
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 from behave.matchers import (
     CFParseMatcher,
@@ -31,6 +31,7 @@ from behave.runner_util import PathManager, exec_file
 from behave.step_registry import registry, setup_step_decorators
 
 from .errors import DocumentationError
+from .internal import callable_source_info, snapshot_type_registries
 
 FIELD_PATTERN = re.compile(r"\{([^}]*)\}")
 SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
@@ -220,18 +221,7 @@ def _preserve_behave_state() -> Iterator[None]:
     saved_initial_matcher_name = factory.initial_matcher_name
     saved_current_matcher = factory.current_matcher
 
-    saved_type_registries: list[tuple[Any, dict[str, Any]]] = []
-    seen_registry_ids: set[int] = set()
-    for matcher_class in factory.step_matcher_class_mapping.values():
-        type_registry = getattr(matcher_class, "TYPE_REGISTRY", None)
-        if not isinstance(type_registry, dict):
-            continue
-
-        registry_id = id(type_registry)
-        if registry_id in seen_registry_ids:
-            continue
-        seen_registry_ids.add(registry_id)
-        saved_type_registries.append((type_registry, dict(type_registry)))
+    saved_type_registries = snapshot_type_registries()
 
     try:
         registry.clear()
@@ -567,13 +557,14 @@ def _callable_parameters(callable_obj: Any) -> list[tuple[str, str | None]]:
         parameters = parameters[1:]
 
     result: list[tuple[str, str | None]] = []
+    globals_namespace = _annotation_namespace(callable_obj)
     for parameter in parameters:
         result.append(
             (
                 parameter.name,
                 _format_annotation(
                     parameter.annotation,
-                    getattr(callable_obj, "__globals__", None),
+                    globals_namespace,
                 ),
             )
         )
@@ -745,16 +736,14 @@ def _callable_location(
     callable_obj: Any,
     project_root: Path,
 ) -> tuple[str | None, int | None]:
-    try:
-        source_file = inspect.getsourcefile(callable_obj) or inspect.getfile(callable_obj)
-    except (OSError, TypeError):
+    source_file = getattr(callable_obj, "__behave_toolkit_source_file__", None)
+    source_line = getattr(callable_obj, "__behave_toolkit_source_line__", None)
+    if isinstance(source_file, str):
+        return _display_path(source_file, project_root), source_line
+
+    source_file, line_number = callable_source_info(callable_obj)
+    if source_file is None:
         return None, None
-
-    try:
-        _, line_number = inspect.getsourcelines(callable_obj)
-    except (OSError, TypeError):
-        line_number = None
-
     return _display_path(source_file, project_root), line_number
 
 
@@ -764,7 +753,7 @@ def _callable_return_type(callable_obj: Any) -> str | None:
     except (TypeError, ValueError):
         return None
 
-    globals_namespace = getattr(callable_obj, "__globals__", None)
+    globals_namespace = _annotation_namespace(callable_obj)
     return _format_annotation(signature.return_annotation, globals_namespace)
 
 
@@ -780,7 +769,7 @@ def _enum_members(callable_obj: Any) -> list[EnumMemberDocumentation]:
 
         if signature is not None:
             annotation = signature.return_annotation
-            resolved = _resolve_annotation(annotation, getattr(callable_obj, "__globals__", None))
+            resolved = _resolve_annotation(annotation, _annotation_namespace(callable_obj))
             if inspect.isclass(resolved) and issubclass(resolved, Enum):
                 enum_type = resolved
 
@@ -822,13 +811,26 @@ def _format_annotation(
     return formatted.replace("typing.", "")
 
 
+def _annotation_namespace(callable_obj: Any) -> dict[str, Any] | None:
+    unwrapped = inspect.unwrap(callable_obj)
+    namespace = getattr(unwrapped, "__globals__", None)
+    if isinstance(namespace, dict):
+        return cast(dict[str, Any], namespace)
+
+    namespace = getattr(callable_obj, "__globals__", None)
+    if isinstance(namespace, dict):
+        return cast(dict[str, Any], namespace)
+
+    return None
+
+
 def _callable_signature(callable_obj: Any) -> str | None:
     try:
         signature = inspect.signature(callable_obj)
     except (TypeError, ValueError):
         return None
 
-    globals_namespace = getattr(callable_obj, "__globals__", None)
+    globals_namespace = _annotation_namespace(callable_obj)
     rendered_parameters: list[str] = []
     seen_keyword_only = False
     for parameter in signature.parameters.values():

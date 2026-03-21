@@ -9,10 +9,13 @@ from behave_toolkit import (
     ConfigError,
     IntegrationError,
     LifecycleManager,
+    ParserConfig,
+    ParserTypeSpec,
     activate_feature_scope,
     activate_global_scope,
     activate_scenario_scope,
     activate_scope,
+    configure_parsers,
     install,
 )
 ```
@@ -22,6 +25,7 @@ from behave_toolkit import (
 | API | Purpose | Typical Behave hook |
 | --- | --- | --- |
 | `install(context, config_path, namespace="toolkit", activate_global=True)` | Load and validate config, attach the manager, and activate global objects. | `before_all` |
+| `configure_parsers(config_path)` | Configure Behave step matcher defaults and register custom types from YAML. | module import time |
 | `activate_global_scope(context, namespace="toolkit")` | Explicitly activate global objects. | `before_all` |
 | `activate_feature_scope(context, namespace="toolkit")` | Activate feature-scoped objects. | `before_feature` |
 | `activate_scenario_scope(context, namespace="toolkit")` | Activate scenario-scoped objects. | `before_scenario` |
@@ -51,7 +55,9 @@ from behave_toolkit import (
 | Type | Purpose |
 | --- | --- |
 | `ObjectSpec` | One normalized configured object definition. |
-| `ToolkitConfig` | Parsed root configuration with `variables` and `objects`. |
+| `ParserTypeSpec` | One configured Behave custom type helper. |
+| `ParserConfig` | Parsed parser-helper section with matcher and type specs. |
+| `ToolkitConfig` | Parsed root configuration with `variables`, `objects`, and `parsers`. |
 | `Scope` | Scope enum used across config normalization and activation. |
 
 ```{note}

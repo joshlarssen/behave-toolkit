@@ -1,8 +1,8 @@
 # behave-toolkit
 
 `behave-toolkit` helps large `behave` suites stay explicit, easier to wire,
-and easier to understand. The project currently focuses on four things:
-configuration-driven object lifecycles, explicit scope activation, strong
+and easier to understand. The project currently focuses on configuration-driven
+object lifecycles, import-time parser helpers, explicit scope activation, strong
 diagnostics, and generated step reference documentation.
 
 ```{toctree}
@@ -11,6 +11,7 @@ diagnostics, and generated step reference documentation.
 
 getting-started
 configuration
+parser-helpers
 lifecycle
 step-documentation
 api-reference
@@ -41,6 +42,14 @@ injection.
 
 See how `install()` and the scope activation helpers map onto Behave's hook
 order.
+:::
+
+:::{grid-item-card} Parser helpers
+:link: parser-helpers
+:link-type: doc
+
+Move custom type registration, matcher selection, and enum-based parser helpers
+into the same YAML config.
 :::
 
 :::{grid-item-card} Step documentation
@@ -76,6 +85,7 @@ execution model behind a heavy framework.
 - `global`, `feature`, and `scenario` scoped object activation
 - YAML-defined factories resolved from your own code, installed packages, or
   the standard library
+- config-driven parser helpers with matcher selection and enum shortcuts
 - explicit object references with `$ref` and reusable values with `$var`
 - fail-fast `ConfigError` and `IntegrationError` messages
 - Sphinx-ready step documentation with custom type pages, enum values, feature

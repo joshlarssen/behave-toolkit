@@ -17,6 +17,7 @@ This repository is intentionally starting small. The current code provides:
 - configuration loading and validation
 - fail-fast diagnostics with dedicated `ConfigError` and `IntegrationError` exceptions
 - scope normalization
+- config-driven parser helpers for Behave custom types
 - lifecycle activation helpers for `environment.py`
 - object creation and cleanup for `global`, `feature`, and `scenario` scopes
 - explicit `$ref` and `$var` markers for object dependencies and reusable values
@@ -25,8 +26,8 @@ This repository is intentionally starting small. The current code provides:
 
 The next milestones are expected to add:
 
-- optional parser/type helper integrations
 - experimental step-scoped objects
+- scenario-cycle helper evaluation
 
 Project documentation for `behave-toolkit` itself lives in `docs/` and is meant
 to be published on GitHub Pages.
@@ -77,9 +78,15 @@ Wire it from `features/environment.py`:
 ```python
 from pathlib import Path
 
-from behave_toolkit import activate_feature_scope, activate_scenario_scope, install
+from behave_toolkit import (
+    activate_feature_scope,
+    activate_scenario_scope,
+    configure_parsers,
+    install,
+)
 
 CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
+configure_parsers(CONFIG_PATH)
 
 
 def before_all(context):
@@ -116,6 +123,40 @@ Markers are explicit on purpose:
 imports, unknown `$ref` / `$var` entries, and object-reference cycles fail fast
 with messages that include the config path and the relevant object field.
 
+## Parser helpers
+
+Parser setup in Behave normally lives as imperative glue in `environment.py`:
+`use_step_matcher(...)`, `register_type(...)`, plus `@parse.with_pattern(...)`
+decorators for each converter.
+
+`behave-toolkit` can move that into the same YAML config:
+
+```yaml
+version: 1
+parsers:
+  step_matcher: cfparse
+  types:
+    Status:
+      enum: support_types.Status
+      case_sensitive: false
+
+    Priority:
+      converter: support_types.parse_priority
+      pattern: low|high
+```
+
+Then the same `configure_parsers(CONFIG_PATH)` call in `environment.py`:
+
+- sets the default Behave step matcher
+- registers the configured custom types
+- auto-builds enum converters when you use `enum: ...`
+- keeps generated step docs aligned, because the helper runs while
+  `environment.py` is imported
+
+This is intentionally import-time setup. It must happen before Behave loads step
+modules, which is why `configure_parsers(CONFIG_PATH)` lives at module level and
+not inside `before_all()`.
+
 ## Step documentation for Sphinx
 
 After a plain `pip install behave-toolkit`, generate a Sphinx-ready technical
@@ -147,6 +188,9 @@ python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 
 The generated Sphinx project is configured for the `Furo` theme,
 `sphinx-design` cards, and `MyST` Markdown parsing.
+
+If you use `configure_parsers(CONFIG_PATH)` in `environment.py`, the generator
+will see the same configured types and matcher defaults as your Behave suite.
 
 ## Project documentation
 
