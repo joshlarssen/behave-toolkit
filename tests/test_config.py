@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from behave_toolkit import Scope, load_config, load_yaml_text
+from behave_toolkit import ConfigError, Scope, load_config, load_yaml_file, load_yaml_text
 
 
 class ConfigLoadingTests(unittest.TestCase):
@@ -56,9 +58,21 @@ class ConfigLoadingTests(unittest.TestCase):
             "https://example.test",
         )
 
-    def test_invalid_objects_section_raises_type_error(self) -> None:
-        with self.assertRaises(TypeError):
+    def test_invalid_objects_section_raises_config_error(self) -> None:
+        with self.assertRaises(ConfigError):
             load_config({"objects": []})
+
+    def test_load_yaml_file_reports_source_path_for_invalid_yaml(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text("objects:\n  browser: [\n", encoding="utf-8")
+
+            with self.assertRaises(ConfigError) as exc:
+                load_yaml_file(config_path)
+
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("Could not parse behave-toolkit config", message)
 
 
 if __name__ == "__main__":

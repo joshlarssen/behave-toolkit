@@ -6,6 +6,7 @@ import pkgutil
 from typing import Any, Callable, Protocol, cast
 
 from .config import ObjectSpec, ToolkitConfig, load_yaml_file
+from .errors import ConfigError, IntegrationError
 from .scopes import Scope
 
 CleanupCallback = Callable[[], None]
@@ -40,6 +41,13 @@ class _ActivationState:
     variable_stack: list[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class _ValidationState:
+    validated_objects: set[str] = field(default_factory=set)
+    object_stack: list[str] = field(default_factory=list)
+    variable_stack: list[str] = field(default_factory=list)
+
+
 def _make_instance_store() -> dict[Scope, dict[str, Any]]:
     return {scope: {} for scope in Scope}
 
@@ -47,7 +55,11 @@ def _make_instance_store() -> dict[Scope, dict[str, Any]]:
 def _require_cleanup_context(context: object) -> SupportsCleanup:
     add_cleanup = getattr(context, "add_cleanup", None)
     if not callable(add_cleanup):
-        raise TypeError("Behave context must provide an add_cleanup() method.")
+        raise IntegrationError(
+            "behave-toolkit requires the real Behave context object with "
+            "add_cleanup(). Call install() and activate_*_scope() from "
+            "environment.py hooks."
+        )
     return cast(SupportsCleanup, context)
 
 
@@ -59,6 +71,26 @@ def _scope_rank(scope: Scope) -> int:
         Scope.STEP: 3,
     }
     return order[scope]
+
+
+def _scope_helper_name(scope: Scope) -> str:
+    helpers = {
+        Scope.GLOBAL: "activate_global_scope",
+        Scope.FEATURE: "activate_feature_scope",
+        Scope.SCENARIO: "activate_scenario_scope",
+        Scope.STEP: "activate_scope",
+    }
+    return helpers[scope]
+
+
+def _scope_hook_name(scope: Scope) -> str:
+    hooks = {
+        Scope.GLOBAL: "before_all",
+        Scope.FEATURE: "before_feature",
+        Scope.SCENARIO: "before_scenario",
+        Scope.STEP: "before_step",
+    }
+    return hooks[scope]
 
 
 @dataclass(slots=True)
@@ -74,18 +106,30 @@ class LifecycleManager:
         aliases_by_scope: dict[Scope, set[str]] = {scope: set() for scope in Scope}
         for spec in self.config.objects.values():
             if spec.context_name == self.namespace:
-                raise ValueError(
-                    f"Object '{spec.name}' cannot use context name '{self.namespace}' "
-                    "because it is reserved for the toolkit manager."
+                raise self._config_error(
+                    f"Object '{spec.name}' cannot use context name "
+                    f"'{self.namespace}' because it is reserved for the toolkit "
+                    "manager."
                 )
 
             aliases = aliases_by_scope[spec.scope]
             if spec.context_name in aliases:
-                raise ValueError(
+                raise self._config_error(
                     f"Scope '{spec.scope.value}' defines context name "
                     f"'{spec.context_name}' more than once."
                 )
             aliases.add(spec.context_name)
+
+        validation_state = _ValidationState()
+        for spec in self.config.objects.values():
+            self._resolve_factory(spec)
+        for spec in self.config.objects.values():
+            self._validate_object_spec(spec, validation_state)
+
+    def _config_error(self, message: str) -> ConfigError:
+        return ConfigError(
+            f"Invalid behave-toolkit config '{self.config_path}': {message}"
+        )
 
     def spec(self, name: str) -> ObjectSpec:
         return self.config.require(name)
@@ -118,7 +162,11 @@ class LifecycleManager:
             )
 
         if self._instances[parsed_scope]:
-            raise RuntimeError(f"Scope '{parsed_scope.value}' is already active.")
+            raise IntegrationError(
+                f"Scope '{parsed_scope.value}' is already active. Call "
+                f"{_scope_helper_name(parsed_scope)}(context) once from "
+                f"{_scope_hook_name(parsed_scope)}."
+            )
 
         state = _ActivationState(
             scope=parsed_scope,
@@ -139,10 +187,25 @@ class LifecycleManager:
                 created[pending.spec.name] = pending.instance
 
             return created
-        except Exception:
+        except Exception as exc:
             for pending in reversed(state.pending_instances):
                 pending.cleanup()
-            raise
+            if isinstance(exc, (ConfigError, IntegrationError)):
+                raise
+
+            object_name = state.creating_names[-1] if state.creating_names else None
+            if object_name is None:
+                message = (
+                    f"Could not activate scope '{parsed_scope.value}' from "
+                    f"behave-toolkit config '{self.config_path}': {exc}"
+                )
+            else:
+                message = (
+                    f"Could not activate scope '{parsed_scope.value}' from "
+                    f"behave-toolkit config '{self.config_path}' while creating "
+                    f"object '{object_name}': {exc}"
+                )
+            raise IntegrationError(message) from exc
 
     def activate_global_scope(self, context: object) -> dict[str, Any]:
         return self.activate_scope(context, Scope.GLOBAL)
@@ -159,14 +222,14 @@ class LifecycleManager:
 
         spec = self.config.require(name)
         if spec.scope is not state.scope:
-            raise ValueError(
+            raise IntegrationError(
                 f"Object '{name}' belongs to scope '{spec.scope.value}', not "
                 f"'{state.scope.value}'."
             )
 
         if name in state.creating_names:
             cycle = " -> ".join([*state.creating_names, name])
-            raise ValueError(f"Circular object reference detected: {cycle}")
+            raise self._config_error(f"Circular object reference detected: {cycle}")
 
         state.creating_names.append(name)
         try:
@@ -190,12 +253,14 @@ class LifecycleManager:
         try:
             target = pkgutil.resolve_name(spec.factory)
         except (AttributeError, ImportError, ValueError) as exc:
-            raise ImportError(
-                f"Could not resolve factory '{spec.factory}' for object '{spec.name}'."
+            raise self._config_error(
+                f"Could not resolve factory '{spec.factory}' for object "
+                f"'{spec.name}'. Ensure the callable is importable from the "
+                "active environment."
             ) from exc
 
         if not callable(target):
-            raise TypeError(
+            raise self._config_error(
                 f"Factory '{spec.factory}' for object '{spec.name}' is not callable."
             )
         return cast(FactoryCallable, target)
@@ -225,15 +290,19 @@ class LifecycleManager:
         extra_keys = set(marker) - {"$ref", "attr"}
         if extra_keys:
             extras = ", ".join(sorted(extra_keys))
-            raise ValueError(f"Object '{spec.name}' uses unsupported $ref keys: {extras}")
+            raise self._config_error(
+                f"Object '{spec.name}' uses unsupported $ref keys: {extras}"
+            )
 
         ref_name = marker.get("$ref")
         if not isinstance(ref_name, str) or not ref_name.strip():
-            raise TypeError(f"Object '{spec.name}' requires a non-empty string in '$ref'.")
+            raise self._config_error(
+                f"Object '{spec.name}' requires a non-empty string in '$ref'."
+            )
 
         attr_path = marker.get("attr")
         if attr_path is not None and (not isinstance(attr_path, str) or not attr_path.strip()):
-            raise TypeError(
+            raise self._config_error(
                 f"Object '{spec.name}' requires 'attr' to be a non-empty string when used."
             )
 
@@ -251,18 +320,22 @@ class LifecycleManager:
         extra_keys = set(marker) - {"$var"}
         if extra_keys:
             extras = ", ".join(sorted(extra_keys))
-            raise ValueError(f"Object '{spec.name}' uses unsupported $var keys: {extras}")
+            raise self._config_error(
+                f"Object '{spec.name}' uses unsupported $var keys: {extras}"
+            )
 
         variable_name = marker.get("$var")
         if not isinstance(variable_name, str) or not variable_name.strip():
-            raise TypeError(f"Object '{spec.name}' requires a non-empty string in '$var'.")
+            raise self._config_error(
+                f"Object '{spec.name}' requires a non-empty string in '$var'."
+            )
 
         variable_name = variable_name.strip()
         if variable_name in state.variable_stack:
             cycle = " -> ".join([*state.variable_stack, variable_name])
-            raise ValueError(f"Circular variable reference detected: {cycle}")
+            raise self._config_error(f"Circular variable reference detected: {cycle}")
 
-        raw_value = self.config.require_variable(variable_name)
+        raw_value = self._require_variable(spec, variable_name)
         state.variable_stack.append(variable_name)
         try:
             return self._resolve_value(raw_value, spec, state)
@@ -275,9 +348,9 @@ class LifecycleManager:
         spec: ObjectSpec,
         state: _ActivationState,
     ) -> Any:
-        dependency_spec = self.config.require(dependency_name)
+        dependency_spec = self._require_object(spec, dependency_name)
         if _scope_rank(dependency_spec.scope) > _scope_rank(spec.scope):
-            raise ValueError(
+            raise self._config_error(
                 f"Object '{spec.name}' in scope '{spec.scope.value}' cannot depend on "
                 f"'{dependency_name}' in narrower scope '{dependency_spec.scope.value}'."
             )
@@ -287,9 +360,11 @@ class LifecycleManager:
 
         active_instances = self._instances[dependency_spec.scope]
         if dependency_name not in active_instances:
-            raise RuntimeError(
+            raise IntegrationError(
                 f"Object '{spec.name}' depends on '{dependency_name}', but scope "
-                f"'{dependency_spec.scope.value}' is not active."
+                f"'{dependency_spec.scope.value}' is not active. Call "
+                f"{_scope_helper_name(dependency_spec.scope)}(context) from "
+                f"{_scope_hook_name(dependency_spec.scope)} first."
             )
         return active_instances[dependency_name]
 
@@ -302,13 +377,13 @@ class LifecycleManager:
         current = value
         for part in attr_path.split("."):
             if not part:
-                raise ValueError(
+                raise self._config_error(
                     f"Reference to '{dependency_name}' contains an empty attr segment."
                 )
             try:
                 current = getattr(current, part)
             except AttributeError as exc:
-                raise AttributeError(
+                raise self._config_error(
                     f"Referenced object '{dependency_name}' does not provide "
                     f"attribute path '{attr_path}'."
                 ) from exc
@@ -355,23 +430,215 @@ class LifecycleManager:
 
         cleanup_attr = getattr(instance, spec.cleanup, None)
         if cleanup_attr is None:
-            raise AttributeError(
+            raise self._config_error(
                 f"Object '{spec.name}' requested cleanup '{spec.cleanup}', but "
                 f"'{type(instance).__name__}' does not provide it."
             )
         if not callable(cleanup_attr):
-            raise TypeError(
+            raise self._config_error(
                 f"Object '{spec.name}' cleanup '{spec.cleanup}' is not callable."
             )
         return cast(CleanupCallback, cleanup_attr)
 
+    def _require_object(self, spec: ObjectSpec, name: str) -> ObjectSpec:
+        try:
+            return self.config.require(name)
+        except KeyError as exc:
+            known = ", ".join(self.list_objects()) or "<none>"
+            raise self._config_error(
+                f"Object '{spec.name}' references unknown object '{name}'. "
+                f"Known objects: {known}."
+            ) from exc
 
-def _require_manager(context: object, namespace: str) -> LifecycleManager:
+    def _require_variable(self, spec: ObjectSpec, name: str) -> Any:
+        try:
+            return self.config.require_variable(name)
+        except KeyError as exc:
+            known = ", ".join(sorted(self.config.variables)) or "<none>"
+            raise self._config_error(
+                f"Object '{spec.name}' references unknown variable '{name}'. "
+                f"Known variables: {known}."
+            ) from exc
+
+    def _validate_object_spec(
+        self,
+        spec: ObjectSpec,
+        state: _ValidationState,
+    ) -> None:
+        if spec.name in state.validated_objects:
+            return
+        if spec.name in state.object_stack:
+            cycle = " -> ".join([*state.object_stack, spec.name])
+            raise self._config_error(f"Circular object reference detected: {cycle}")
+
+        state.object_stack.append(spec.name)
+        try:
+            self._validate_value(spec.args, spec, "args", state)
+            self._validate_value(spec.kwargs, spec, "kwargs", state)
+        finally:
+            state.object_stack.pop()
+
+        state.validated_objects.add(spec.name)
+
+    def _validate_value(
+        self,
+        value: Any,
+        spec: ObjectSpec,
+        location: str,
+        state: _ValidationState,
+    ) -> None:
+        if isinstance(value, tuple):
+            for index, item in enumerate(value):
+                self._validate_value(item, spec, f"{location}[{index}]", state)
+            return
+
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                self._validate_value(item, spec, f"{location}[{index}]", state)
+            return
+
+        if isinstance(value, dict):
+            if "$ref" in value:
+                self._validate_reference_marker(value, spec, location, state)
+                return
+            if "$var" in value:
+                self._validate_variable_marker(value, spec, location, state)
+                return
+
+            for key, item in value.items():
+                child_location = (
+                    f"{location}.{key}"
+                    if isinstance(key, str)
+                    else f"{location}[{key!r}]"
+                )
+                self._validate_value(item, spec, child_location, state)
+
+    def _validate_reference_marker(
+        self,
+        marker: dict[str, Any],
+        spec: ObjectSpec,
+        location: str,
+        state: _ValidationState,
+    ) -> None:
+        extra_keys = set(marker) - {"$ref", "attr"}
+        if extra_keys:
+            extras = ", ".join(sorted(extra_keys))
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' uses unsupported "
+                f"$ref keys: {extras}."
+            )
+
+        ref_name = marker.get("$ref")
+        if not isinstance(ref_name, str) or not ref_name.strip():
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' requires a non-empty "
+                "string in '$ref'."
+            )
+        ref_name = ref_name.strip()
+
+        attr_path = marker.get("attr")
+        if attr_path is not None:
+            if not isinstance(attr_path, str) or not attr_path.strip():
+                raise self._config_error(
+                    f"Object '{spec.name}' field '{location}.attr' must be a "
+                    "non-empty string."
+                )
+            if any(not part for part in attr_path.split(".")):
+                raise self._config_error(
+                    f"Object '{spec.name}' field '{location}.attr' must not "
+                    "contain empty path segments."
+                )
+
+        dependency_spec = self._require_known_object(spec, ref_name, location)
+        if _scope_rank(dependency_spec.scope) > _scope_rank(spec.scope):
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' cannot reference "
+                f"'{ref_name}' in narrower scope '{dependency_spec.scope.value}'."
+            )
+
+        if ref_name in state.object_stack:
+            cycle = " -> ".join([*state.object_stack, ref_name])
+            raise self._config_error(f"Circular object reference detected: {cycle}")
+
+        self._validate_object_spec(dependency_spec, state)
+
+    def _validate_variable_marker(
+        self,
+        marker: dict[str, Any],
+        spec: ObjectSpec,
+        location: str,
+        state: _ValidationState,
+    ) -> None:
+        extra_keys = set(marker) - {"$var"}
+        if extra_keys:
+            extras = ", ".join(sorted(extra_keys))
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' uses unsupported "
+                f"$var keys: {extras}."
+            )
+
+        variable_name = marker.get("$var")
+        if not isinstance(variable_name, str) or not variable_name.strip():
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' requires a non-empty "
+                "string in '$var'."
+            )
+        variable_name = variable_name.strip()
+
+        if variable_name in state.variable_stack:
+            cycle = " -> ".join([*state.variable_stack, variable_name])
+            raise self._config_error(f"Circular variable reference detected: {cycle}")
+
+        raw_value = self._require_known_variable(spec, variable_name, location)
+        state.variable_stack.append(variable_name)
+        try:
+            self._validate_value(raw_value, spec, f"variables.{variable_name}", state)
+        finally:
+            state.variable_stack.pop()
+
+    def _require_known_object(
+        self,
+        spec: ObjectSpec,
+        name: str,
+        location: str,
+    ) -> ObjectSpec:
+        try:
+            return self.config.require(name)
+        except KeyError as exc:
+            known = ", ".join(self.list_objects()) or "<none>"
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' references unknown "
+                f"object '{name}'. Known objects: {known}."
+            ) from exc
+
+    def _require_known_variable(
+        self,
+        spec: ObjectSpec,
+        name: str,
+        location: str,
+    ) -> Any:
+        try:
+            return self.config.require_variable(name)
+        except KeyError as exc:
+            known = ", ".join(sorted(self.config.variables)) or "<none>"
+            raise self._config_error(
+                f"Object '{spec.name}' field '{location}' references unknown "
+                f"variable '{name}'. Known variables: {known}."
+            ) from exc
+
+
+def _require_manager(
+    context: object,
+    namespace: str,
+    *,
+    caller: str,
+) -> LifecycleManager:
     manager = getattr(context, namespace, None)
     if not isinstance(manager, LifecycleManager):
-        raise AttributeError(
+        raise IntegrationError(
             f"Context does not contain a behave-toolkit manager at '{namespace}'. "
-            "Call install() first."
+            "Call install(context, ...) from before_all before calling "
+            f"{caller}(context)."
         )
     return manager
 
@@ -382,7 +649,13 @@ def activate_scope(
     *,
     namespace: str = "toolkit",
 ) -> dict[str, Any]:
-    return _require_manager(context, namespace).activate_scope(context, scope)
+    parsed_scope = Scope.parse(scope)
+    caller = _scope_helper_name(parsed_scope)
+    return _require_manager(
+        context,
+        namespace,
+        caller=caller,
+    ).activate_scope(context, parsed_scope)
 
 
 def activate_global_scope(
@@ -418,14 +691,16 @@ def install(
 ) -> LifecycleManager:
     """Load config, attach the manager, and optionally activate global objects."""
 
+    resolved_path = Path(config_path).expanduser().resolve()
     if hasattr(context, namespace):
-        raise AttributeError(
-            f"Context already has attribute '{namespace}'. Choose another namespace."
+        raise IntegrationError(
+            f"Could not install behave-toolkit under namespace '{namespace}': "
+            "the context already defines that attribute. Choose another namespace."
         )
 
     manager = LifecycleManager(
-        config_path=Path(config_path),
-        config=load_yaml_file(config_path),
+        config_path=resolved_path,
+        config=load_yaml_file(resolved_path),
         namespace=namespace,
     )
     manager.validate()

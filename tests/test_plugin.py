@@ -5,7 +5,13 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from behave_toolkit import Scope, install
+from behave_toolkit import (
+    ConfigError,
+    IntegrationError,
+    Scope,
+    activate_feature_scope,
+    install,
+)
 
 
 class PluginInstallationTests(unittest.TestCase):
@@ -16,8 +22,10 @@ class PluginInstallationTests(unittest.TestCase):
                 """
                 objects:
                   browser:
-                    factory: demo.browser.Factory
+                    factory: pathlib.Path
                     scope: feature
+                    args:
+                      - .
                 """,
                 encoding="utf-8",
             )
@@ -35,8 +43,64 @@ class PluginInstallationTests(unittest.TestCase):
             config_path.write_text("objects: {}", encoding="utf-8")
 
             context = SimpleNamespace(toolkit="occupied")
-            with self.assertRaises(AttributeError):
+            with self.assertRaises(IntegrationError) as exc:
                 install(context, config_path)
+
+        message = str(exc.exception)
+        self.assertIn("namespace 'toolkit'", message)
+        self.assertIn("Choose another namespace", message)
+
+    def test_activate_feature_scope_without_install_mentions_before_all(self) -> None:
+        with self.assertRaises(IntegrationError) as exc:
+            activate_feature_scope(SimpleNamespace())
+
+        message = str(exc.exception)
+        self.assertIn("before_all", message)
+        self.assertIn("install(context, ...)", message)
+        self.assertIn("activate_feature_scope", message)
+
+    def test_install_reports_invalid_scope_with_config_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  browser:
+                    factory: pathlib.Path
+                    scope: invalid
+                    args:
+                      - .
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ConfigError) as exc:
+                install(SimpleNamespace(), config_path, activate_global=False)
+
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("Unsupported scope 'invalid'", message)
+
+    def test_install_reports_bad_factory_import_with_config_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  browser:
+                    factory: demo.browser.Factory
+                    scope: feature
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ConfigError) as exc:
+                install(SimpleNamespace(), config_path, activate_global=False)
+
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("demo.browser.Factory", message)
+        self.assertIn("importable", message)
 
 
 if __name__ == "__main__":

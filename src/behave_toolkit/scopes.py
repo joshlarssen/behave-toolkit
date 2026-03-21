@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from .errors import ConfigError
+
 
 class Scope(str, Enum):
     STEP = "step"
@@ -26,7 +28,7 @@ class Scope(str, Enum):
             return cls(normalized)
         except ValueError as exc:
             allowed = ", ".join(scope.value for scope in cls)
-            raise ValueError(
+            raise ConfigError(
                 f"Unsupported scope '{value}'. Expected one of: {allowed}."
             ) from exc
 

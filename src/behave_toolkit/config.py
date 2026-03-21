@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from .errors import ConfigError
 from .scopes import Scope
 
 
@@ -52,18 +53,45 @@ class ToolkitConfig:
 def load_yaml_text(text: str) -> ToolkitConfig:
     """Load toolkit configuration from a YAML string."""
 
-    raw = yaml.safe_load(text) or {}
-    if not isinstance(raw, Mapping):
-        raise TypeError("The YAML root must be a mapping.")
-    return load_config(raw)
+    return load_config(_load_yaml_mapping(text, source="from text"))
 
 
 def load_yaml_file(path: str | Path) -> ToolkitConfig:
     """Load toolkit configuration from a YAML file."""
 
-    config_path = Path(path)
-    raw_text = config_path.read_text(encoding="utf-8")
-    return load_yaml_text(raw_text)
+    config_path = Path(path).expanduser().resolve()
+    try:
+        raw_text = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(
+            f"Could not read behave-toolkit config '{config_path}': {exc}"
+        ) from exc
+    try:
+        return load_config(_load_yaml_mapping(raw_text, source=f"at '{config_path}'"))
+    except ConfigError as exc:
+        message = str(exc)
+        if str(config_path) in message:
+            raise
+        raise ConfigError(
+            f"Invalid behave-toolkit config '{config_path}': {message}"
+        ) from exc
+
+
+def _load_yaml_mapping(text: str, *, source: str) -> Mapping[str, Any]:
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ConfigError(
+            f"Could not parse behave-toolkit config {source}: {exc}"
+        ) from exc
+
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ConfigError(
+            f"The YAML root in behave-toolkit config {source} must be a mapping."
+        )
+    return raw
 
 
 def load_config(raw: Mapping[str, Any]) -> ToolkitConfig:
@@ -71,39 +99,45 @@ def load_config(raw: Mapping[str, Any]) -> ToolkitConfig:
 
     version = raw.get("version", 1)
     if not isinstance(version, int):
-        raise TypeError("The config 'version' must be an integer.")
+        raise ConfigError("The config 'version' must be an integer.")
 
     raw_variables = raw.get("variables", {})
     if not isinstance(raw_variables, Mapping):
-        raise TypeError("The config 'variables' section must be a mapping.")
+        raise ConfigError("The config 'variables' section must be a mapping.")
 
     raw_objects = raw.get("objects", {})
     if not isinstance(raw_objects, Mapping):
-        raise TypeError("The config 'objects' section must be a mapping.")
+        raise ConfigError("The config 'objects' section must be a mapping.")
 
     objects: dict[str, ObjectSpec] = {}
     for name, definition in raw_objects.items():
         if not isinstance(definition, Mapping):
-            raise TypeError(f"Object '{name}' must be defined as a mapping.")
+            raise ConfigError(f"Object '{name}' must be defined as a mapping.")
 
         factory = definition.get("factory")
         if not isinstance(factory, str) or not factory.strip():
-            raise ValueError(f"Object '{name}' must define a non-empty 'factory' string.")
+            raise ConfigError(
+                f"Object '{name}' must define a non-empty 'factory' string."
+            )
 
         raw_args = definition.get("args", [])
         raw_kwargs = definition.get("kwargs", {})
         if not isinstance(raw_args, list):
-            raise TypeError(f"Object '{name}' field 'args' must be a list.")
+            raise ConfigError(f"Object '{name}' field 'args' must be a list.")
         if not isinstance(raw_kwargs, Mapping):
-            raise TypeError(f"Object '{name}' field 'kwargs' must be a mapping.")
+            raise ConfigError(f"Object '{name}' field 'kwargs' must be a mapping.")
 
         cleanup = definition.get("cleanup")
         if cleanup is not None and not isinstance(cleanup, str):
-            raise TypeError(f"Object '{name}' field 'cleanup' must be a string if provided.")
+            raise ConfigError(
+                f"Object '{name}' field 'cleanup' must be a string if provided."
+            )
 
         inject_as = definition.get("inject_as")
         if inject_as is not None and not isinstance(inject_as, str):
-            raise TypeError(f"Object '{name}' field 'inject_as' must be a string if provided.")
+            raise ConfigError(
+                f"Object '{name}' field 'inject_as' must be a string if provided."
+            )
 
         objects[str(name)] = ObjectSpec(
             name=str(name),

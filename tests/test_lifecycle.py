@@ -7,6 +7,8 @@ from pathlib import Path
 from behave.runner import scoped_context_layer
 
 from behave_toolkit import (
+    ConfigError,
+    IntegrationError,
     Scope,
     activate_feature_scope,
     activate_scenario_scope,
@@ -167,7 +169,7 @@ class LifecycleManagerTests(unittest.TestCase):
                         Path(context.workspace.name) / "report.json",
                     )
 
-    def test_invalid_narrower_scope_reference_is_rejected(self) -> None:
+    def test_invalid_narrower_scope_reference_is_rejected_during_install(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "behave-toolkit.yaml"
             config_path.write_text(
@@ -190,16 +192,15 @@ class LifecycleManagerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            context = make_context()
-            install(context, config_path)
+            with self.assertRaises(ConfigError) as exc:
+                install(make_context(), config_path)
 
-            with scoped_context_layer(context, layer="feature"):
-                with self.assertRaises(ValueError) as exc:
-                    activate_feature_scope(context)
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("args[0]", message)
+        self.assertIn("narrower scope", message)
 
-            self.assertIn("narrower scope", str(exc.exception))
-
-    def test_circular_object_references_are_rejected(self) -> None:
+    def test_circular_object_references_are_rejected_during_install(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "behave-toolkit.yaml"
             config_path.write_text(
@@ -223,14 +224,33 @@ class LifecycleManagerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            context = make_context()
-            install(context, config_path)
+            with self.assertRaises(ConfigError) as exc:
+                install(make_context(), config_path)
 
-            with scoped_context_layer(context, layer="scenario"):
-                with self.assertRaises(ValueError) as exc:
-                    activate_scenario_scope(context)
+        self.assertIn("Circular object reference", str(exc.exception))
 
-            self.assertIn("Circular object reference", str(exc.exception))
+    def test_missing_variable_is_rejected_during_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  report_path:
+                    factory: pathlib.Path
+                    scope: scenario
+                    args:
+                      - $var: missing_name
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ConfigError) as exc:
+                install(make_context(), config_path)
+
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("missing_name", message)
+        self.assertIn("args[0]", message)
 
     def test_invalid_cleanup_attribute_raises_before_binding_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -252,10 +272,12 @@ class LifecycleManagerTests(unittest.TestCase):
             manager = install(context, config_path)
 
             with scoped_context_layer(context, layer="scenario"):
-                with self.assertRaises(AttributeError) as exc:
+                with self.assertRaises(ConfigError) as exc:
                     activate_scenario_scope(context)
 
-            self.assertIn("missing_method", str(exc.exception))
+            message = str(exc.exception)
+            self.assertIn(str(config_path.resolve()), message)
+            self.assertIn("missing_method", message)
             self.assertFalse(hasattr(context, "api_client"))
             self.assertEqual(manager.active_objects(Scope.SCENARIO), {})
 
@@ -276,10 +298,44 @@ class LifecycleManagerTests(unittest.TestCase):
             )
 
             context = make_context()
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ConfigError):
                 install(context, config_path)
 
             self.assertFalse(hasattr(context, "toolkit"))
+
+    def test_missing_global_dependency_reports_hook_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  session_client:
+                    factory: test_support.build_tracking_resource
+                    scope: global
+                    args:
+                      - session
+                    cleanup: close
+                  api_client:
+                    factory: test_support.build_dependent_resource
+                    scope: scenario
+                    args:
+                      - $ref: session_client
+                      - api
+                    cleanup: close
+                """,
+                encoding="utf-8",
+            )
+
+            context = make_context()
+            install(context, config_path, activate_global=False)
+
+            with scoped_context_layer(context, layer="scenario"):
+                with self.assertRaises(IntegrationError) as exc:
+                    activate_scenario_scope(context)
+
+        message = str(exc.exception)
+        self.assertIn("activate_global_scope(context)", message)
+        self.assertIn("before_all", message)
 
     def test_step_scope_activation_is_not_implemented_yet(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
