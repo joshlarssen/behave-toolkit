@@ -12,6 +12,7 @@ diagnostics, and generated step reference documentation.
 getting-started
 configuration
 parser-helpers
+scenario-cycling
 lifecycle
 step-documentation
 api-reference
@@ -52,6 +53,14 @@ Move custom type registration, matcher selection, and enum-based parser helpers
 into the same YAML config.
 :::
 
+:::{grid-item-card} Scenario cycling
+:link: scenario-cycling
+:link-type: doc
+
+Replay a tagged plain scenario multiple times with `@cycling(N)` while keeping
+Behave hooks and reports explicit.
+:::
+
 :::{grid-item-card} Step documentation
 :link: step-documentation
 :link-type: doc
@@ -86,14 +95,16 @@ execution model behind a heavy framework.
 - YAML-defined factories resolved from your own code, installed packages, or
   the standard library
 - config-driven parser helpers with matcher selection and enum shortcuts
+- tag-driven scenario cycling with `@cycling(N)`
 - explicit object references with `$ref` and reusable values with `$var`
 - fail-fast `ConfigError` and `IntegrationError` messages
 - Sphinx-ready step documentation with custom type pages, enum values, feature
   examples, and structured Google-style docstrings
 
 ```{note}
-`step` scope is intentionally reserved but not implemented yet. The current
-production-ready scopes are `global`, `feature`, and `scenario`.
+The currently supported runtime scopes are `global`, `feature`, and `scenario`.
+Scenario cycling is orthogonal: it multiplies scenario executions, not object
+scopes.
 ```
 
 ## Documentation strategy

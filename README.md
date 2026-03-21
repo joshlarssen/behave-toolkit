@@ -6,9 +6,9 @@
 The first bootstrap version focuses on a clean project foundation:
 
 - declarative YAML configuration for named objects
-- explicit lifecycle scopes (`step`, `scenario`, `feature`, `global`)
+- explicit lifecycle scopes (`scenario`, `feature`, `global`)
 - a small installation API for `features/environment.py`
-- a package layout that leaves room for future documentation, variables, and parser helpers
+- a package layout that leaves room for focused extensions like parser helpers and scenario cycling
 
 ## Status
 
@@ -18,16 +18,17 @@ This repository is intentionally starting small. The current code provides:
 - fail-fast diagnostics with dedicated `ConfigError` and `IntegrationError` exceptions
 - scope normalization
 - config-driven parser helpers for Behave custom types
+- tag-driven scenario cycling with `@cycling(N)`
 - lifecycle activation helpers for `environment.py`
 - object creation and cleanup for `global`, `feature`, and `scenario` scopes
 - explicit `$ref` and `$var` markers for object dependencies and reusable values
 - Sphinx-oriented step documentation generation with custom type pages
 - a manager attached to the Behave context for inspection and future extensions
 
-The next milestones are expected to add:
+Possible follow-up ideas still under evaluation include:
 
-- experimental step-scoped objects
-- scenario-cycle helper evaluation
+- step search / discovery helpers
+- other low-boilerplate helpers that keep Behave explicit
 
 Project documentation for `behave-toolkit` itself lives in `docs/` and is meant
 to be published on GitHub Pages.
@@ -82,6 +83,7 @@ from behave_toolkit import (
     activate_feature_scope,
     activate_scenario_scope,
     configure_parsers,
+    expand_scenario_cycles,
     install,
 )
 
@@ -90,6 +92,7 @@ configure_parsers(CONFIG_PATH)
 
 
 def before_all(context):
+    expand_scenario_cycles(context)
     install(context, CONFIG_PATH)
 
 
@@ -156,6 +159,32 @@ Then the same `configure_parsers(CONFIG_PATH)` call in `environment.py`:
 This is intentionally import-time setup. It must happen before Behave loads step
 modules, which is why `configure_parsers(CONFIG_PATH)` lives at module level and
 not inside `before_all()`.
+
+## Scenario cycling
+
+For a plain `Scenario`, add a tag like:
+
+```gherkin
+@cycling(3)
+Scenario: Billing burst
+  Given the toolkit global session is ready
+  When I submit 3 requests to billing
+  Then the request summary is stored
+```
+
+Then call `expand_scenario_cycles(context)` once from `before_all()`:
+
+- it expands the tagged scenario into repeated runs before feature execution starts
+- it is a no-op when no scenario uses `@cycling(...)`
+- each cycle gets its own scenario lifecycle and its own report entry
+
+This is intentionally separate from `Scenario Outline`:
+
+- `@cycling(N)` is for replaying the same plain scenario multiple times
+- `Scenario Outline` remains the right tool for data-driven example tables
+
+The repeated cycles appear as separate scenarios in Behave output, with names
+like `Billing burst [cycle 2/3]` so failures stay attributable to one replay.
 
 ## Step documentation for Sphinx
 

@@ -9,6 +9,7 @@ from .config import (
     load_yaml_file,
     load_yaml_text,
 )
+from .cycles import expand_scenario_cycles
 from .errors import ConfigError, DocumentationError, IntegrationError, ToolkitError
 from .parsers import configure_parsers
 from .plugin import (
@@ -26,6 +27,7 @@ __all__ = [
     "ConfigError",
     "DocumentationError",
     "DocumentationResult",
+    "expand_scenario_cycles",
     "IntegrationError",
     "LifecycleManager",
     "ObjectSpec",

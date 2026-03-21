@@ -10,13 +10,13 @@
 | `feature` | `before_feature` | One feature file |
 | `scenario` | `before_scenario` | One scenario |
 
-`step` is reserved for future work but is not implemented in the current
-release.
+The current release only supports these three runtime scopes.
 
 ## Public hook helpers
 
 | Helper | Typical call site | Purpose |
 | --- | --- | --- |
+| `expand_scenario_cycles(context)` | `before_all` | Expand tagged plain scenarios that use `@cycling(N)` before any feature runs. |
 | `install(context, config_path, ...)` | `before_all` | Load the config, validate it, attach the manager, and optionally activate global objects. |
 | `activate_global_scope(context, ...)` | `before_all` | Explicitly activate global objects when you disable `activate_global`. |
 | `activate_feature_scope(context, ...)` | `before_feature` | Create and expose feature-scoped objects. |

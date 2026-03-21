@@ -16,6 +16,7 @@ from behave_toolkit import (
     activate_scenario_scope,
     activate_scope,
     configure_parsers,
+    expand_scenario_cycles,
     install,
 )
 ```
@@ -25,6 +26,7 @@ from behave_toolkit import (
 | API | Purpose | Typical Behave hook |
 | --- | --- | --- |
 | `install(context, config_path, namespace="toolkit", activate_global=True)` | Load and validate config, attach the manager, and activate global objects. | `before_all` |
+| `expand_scenario_cycles(context)` | Expand tagged plain scenarios that use `@cycling(N)` before feature execution starts. | `before_all` |
 | `configure_parsers(config_path)` | Configure Behave step matcher defaults and register custom types from YAML. | module import time |
 | `activate_global_scope(context, namespace="toolkit")` | Explicitly activate global objects. | `before_all` |
 | `activate_feature_scope(context, namespace="toolkit")` | Activate feature-scoped objects. | `before_feature` |
