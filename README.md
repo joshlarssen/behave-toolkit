@@ -18,14 +18,12 @@ This repository is intentionally starting small. The current code provides:
 - scope normalization
 - lifecycle activation helpers for `environment.py`
 - object creation and cleanup for `global`, `feature`, and `scenario` scopes
+- explicit `$ref` and `$var` markers for object dependencies and reusable values
 - a manager attached to the Behave context for inspection and future extensions
 
 The next milestones are expected to add:
 
-- object instantiation and cleanup by scope
-- reference resolution between configured objects
 - step catalogue generation
-- variable interpolation helpers
 - optional parser/type helper integrations
 
 ## Quick start
@@ -40,26 +38,28 @@ Create a configuration file:
 
 ```yaml
 version: 1
+variables:
+  report_name: report.json
+
 objects:
-  session_client:
-    factory: my_project.session.build_session_client
-    scope: global
-    cleanup: close
-
-  api_client:
-    factory: my_project.clients.ApiClient
-    scope: scenario
-    kwargs:
-      base_url: https://example.test
-    cleanup: close
-
-  browser_session:
-    factory: my_project.browser.build_browser
+  workspace:
+    factory: tempfile.TemporaryDirectory
     scope: feature
-    inject_as: browser
+    cleanup: cleanup
+
+  workspace_path:
+    factory: pathlib.Path
+    scope: feature
     args:
-      - chromium
-    cleanup: quit
+      - $ref: workspace
+        attr: name
+
+  report_path:
+    factory: pathlib.Path
+    scope: scenario
+    args:
+      - $ref: workspace_path
+      - $var: report_name
 ```
 
 Wire it from `features/environment.py`:
@@ -83,6 +83,18 @@ def before_scenario(context, scenario):
 Global objects are created during `install()`. Feature and scenario objects are
 created by the matching hook helpers. Instances are exposed on the Behave
 context using either `inject_as` or the object name.
+
+`factory` can point to:
+
+- your own project code
+- an installed package from the active environment
+- the Python standard library
+
+Markers are explicit on purpose:
+
+- `$ref`: inject another configured object
+- `$ref` + `attr`: inject one attribute path from another object
+- `$var`: inject a named value from the root `variables` section
 
 ## Development
 

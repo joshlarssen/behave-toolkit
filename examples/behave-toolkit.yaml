@@ -1,22 +1,24 @@
 version: 1
+variables:
+  report_name: report.json
+
 objects:
-  session_client:
-    factory: my_project.session.build_session_client
-    scope: global
-    cleanup: close
-
-  api_client:
-    factory: my_project.clients.ApiClient
-    scope: scenario
-    kwargs:
-      base_url: https://example.test
-    cleanup: close
-
-  browser_session:
-    factory: my_project.browser.build_browser
+  workspace:
+    factory: tempfile.TemporaryDirectory
     scope: feature
-    inject_as: browser
+    cleanup: cleanup
+
+  workspace_path:
+    factory: pathlib.Path
+    scope: feature
     args:
-      - chromium
-    cleanup: quit
+      - $ref: workspace
+        attr: name
+
+  report_path:
+    factory: pathlib.Path
+    scope: scenario
+    args:
+      - $ref: workspace_path
+      - $var: report_name
 

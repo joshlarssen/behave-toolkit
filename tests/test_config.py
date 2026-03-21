@@ -41,6 +41,21 @@ class ConfigLoadingTests(unittest.TestCase):
 
         self.assertEqual(config.require("browser").scope, Scope.GLOBAL)
 
+    def test_variables_are_loaded_from_root_section(self) -> None:
+        config = load_config(
+            {
+                "variables": {
+                    "api_base_url": "https://example.test",
+                },
+                "objects": {},
+            }
+        )
+
+        self.assertEqual(
+            config.require_variable("api_base_url"),
+            "https://example.test",
+        )
+
     def test_invalid_objects_section_raises_type_error(self) -> None:
         with self.assertRaises(TypeError):
             load_config({"objects": []})

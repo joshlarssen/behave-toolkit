@@ -31,6 +31,7 @@ class ToolkitConfig:
     """Normalized project configuration."""
 
     version: int
+    variables: dict[str, Any] = field(default_factory=dict)
     objects: dict[str, ObjectSpec] = field(default_factory=dict)
 
     def require(self, name: str) -> ObjectSpec:
@@ -39,6 +40,13 @@ class ToolkitConfig:
         except KeyError as exc:
             known = ", ".join(sorted(self.objects)) or "<none>"
             raise KeyError(f"Unknown object '{name}'. Known objects: {known}") from exc
+
+    def require_variable(self, name: str) -> Any:
+        try:
+            return self.variables[name]
+        except KeyError as exc:
+            known = ", ".join(sorted(self.variables)) or "<none>"
+            raise KeyError(f"Unknown variable '{name}'. Known variables: {known}") from exc
 
 
 def load_yaml_text(text: str) -> ToolkitConfig:
@@ -64,6 +72,10 @@ def load_config(raw: Mapping[str, Any]) -> ToolkitConfig:
     version = raw.get("version", 1)
     if not isinstance(version, int):
         raise TypeError("The config 'version' must be an integer.")
+
+    raw_variables = raw.get("variables", {})
+    if not isinstance(raw_variables, Mapping):
+        raise TypeError("The config 'variables' section must be a mapping.")
 
     raw_objects = raw.get("objects", {})
     if not isinstance(raw_objects, Mapping):
@@ -103,4 +115,4 @@ def load_config(raw: Mapping[str, Any]) -> ToolkitConfig:
             inject_as=inject_as,
         )
 
-    return ToolkitConfig(version=version, objects=objects)
+    return ToolkitConfig(version=version, variables=dict(raw_variables), objects=objects)

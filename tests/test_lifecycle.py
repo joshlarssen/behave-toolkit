@@ -65,9 +65,10 @@ class LifecycleManagerTests(unittest.TestCase):
                       - browser
                     cleanup: close
                   api_client:
-                    factory: test_support.build_tracking_resource
+                    factory: test_support.build_dependent_resource
                     scope: scenario
                     args:
+                      - $ref: browser_session
                       - api
                     cleanup: close
                 """,
@@ -99,6 +100,7 @@ class LifecycleManagerTests(unittest.TestCase):
                         [("create", "browser"), ("create", "api")],
                     )
                     self.assertIs(manager.instance("api_client"), api_client)
+                    self.assertIs(api_client.dependency, browser)
                     self.assertEqual(
                         manager.active_objects(Scope.SCENARIO),
                         {"api_client": api_client},
@@ -122,6 +124,113 @@ class LifecycleManagerTests(unittest.TestCase):
             )
             self.assertEqual(manager.active_objects(Scope.FEATURE), {})
             self.assertFalse(hasattr(context, "browser"))
+
+    def test_variables_and_stdlib_factories_can_be_combined(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                variables:
+                  report_name: report.json
+                objects:
+                  workspace:
+                    factory: tempfile.TemporaryDirectory
+                    scope: feature
+                    cleanup: cleanup
+                  workspace_path:
+                    factory: pathlib.Path
+                    scope: feature
+                    args:
+                      - $ref: workspace
+                        attr: name
+                  report_path:
+                    factory: pathlib.Path
+                    scope: scenario
+                    args:
+                      - $ref: workspace_path
+                      - $var: report_name
+                """,
+                encoding="utf-8",
+            )
+
+            context = make_context()
+            install(context, config_path)
+
+            with scoped_context_layer(context, layer="feature"):
+                activate_feature_scope(context)
+                self.assertEqual(context.workspace_path, Path(context.workspace.name))
+
+                with scoped_context_layer(context, layer="scenario"):
+                    activate_scenario_scope(context)
+                    self.assertEqual(
+                        context.report_path,
+                        Path(context.workspace.name) / "report.json",
+                    )
+
+    def test_invalid_narrower_scope_reference_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  scenario_value:
+                    factory: test_support.build_tracking_resource
+                    scope: scenario
+                    args:
+                      - scenario
+                    cleanup: close
+                  feature_value:
+                    factory: test_support.build_dependent_resource
+                    scope: feature
+                    args:
+                      - $ref: scenario_value
+                      - feature
+                    cleanup: close
+                """,
+                encoding="utf-8",
+            )
+
+            context = make_context()
+            install(context, config_path)
+
+            with scoped_context_layer(context, layer="feature"):
+                with self.assertRaises(ValueError) as exc:
+                    activate_feature_scope(context)
+
+            self.assertIn("narrower scope", str(exc.exception))
+
+    def test_circular_object_references_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "behave-toolkit.yaml"
+            config_path.write_text(
+                """
+                objects:
+                  alpha:
+                    factory: test_support.build_dependent_resource
+                    scope: scenario
+                    args:
+                      - $ref: beta
+                      - alpha
+                    cleanup: close
+                  beta:
+                    factory: test_support.build_dependent_resource
+                    scope: scenario
+                    args:
+                      - $ref: alpha
+                      - beta
+                    cleanup: close
+                """,
+                encoding="utf-8",
+            )
+
+            context = make_context()
+            install(context, config_path)
+
+            with scoped_context_layer(context, layer="scenario"):
+                with self.assertRaises(ValueError) as exc:
+                    activate_scenario_scope(context)
+
+            self.assertIn("Circular object reference", str(exc.exception))
 
     def test_invalid_cleanup_attribute_raises_before_binding_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
