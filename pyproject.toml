@@ -41,6 +41,7 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/joshlarssen/behave-toolkit"
 Issues = "https://github.com/joshlarssen/behave-toolkit/issues"
+Documentation = "https://joshlarssen.github.io/behave-toolkit/"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

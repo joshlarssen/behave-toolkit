@@ -28,6 +28,9 @@ The next milestones are expected to add:
 - optional parser/type helper integrations
 - experimental step-scoped objects
 
+Project documentation for `behave-toolkit` itself lives in `docs/` and is meant
+to be published on GitHub Pages.
+
 ## Quick start
 
 Install the package:
@@ -137,6 +140,18 @@ python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 
 The generated Sphinx project is configured for the `Furo` theme,
 `sphinx-design` cards, and `MyST` Markdown parsing.
+
+## Project documentation
+
+Build the main project documentation locally with:
+
+```bash
+pip install -e ".[docs]"
+python -m sphinx -W --keep-going -b html docs docs/_build/html
+```
+
+A dedicated GitHub Actions workflow builds this site on pull requests and
+deploys it to GitHub Pages from `main`.
 
 ## Development
 

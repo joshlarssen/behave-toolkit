@@ -1,0 +1,25 @@
+:root {
+  --bt-radius: 0.85rem;
+}
+
+.sd-card {
+  border-radius: var(--bt-radius);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.sd-card .sd-card-title {
+  font-weight: 700;
+}
+
+.bd-content pre {
+  border-radius: var(--bt-radius);
+}
+
+.bd-content h2 {
+  margin-top: 2.4rem;
+}
+
+.bd-content table td code,
+.bd-content table th code {
+  white-space: nowrap;
+}
