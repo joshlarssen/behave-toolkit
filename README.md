@@ -123,7 +123,8 @@ The generated pages include:
 - a browsable step catalog grouped by keyword, with integrated
   docstring summaries and parameter details
 - one page per step definition with signature, full implementation
-  docstring, parameter breakdown, and examples
+  docstring, structured Google-style `Args` / `Returns` / `Raises`
+  sections, parameter breakdown, and examples
 - one page per custom parse type with links back from steps to the type
 - enum values when a converter exposes an enum return annotation
 

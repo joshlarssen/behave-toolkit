@@ -72,6 +72,11 @@ class StepDocumentationTests(unittest.TestCase):
             self.assertIn("`ACTIVE`", type_page)
             self.assertIn("`'active'`", type_page)
             self.assertIn("Given I have a {status:Status} account", type_page)
+            self.assertIn("### Arguments", type_page)
+            self.assertIn("### Returns", type_page)
+            self.assertIn("### Raises", type_page)
+            self.assertIn("| `text` | - | Raw status token from the feature file. |", type_page)
+            self.assertIn("| `Status` | Matching enum value. |", type_page)
 
             matching_step_pages = [
                 path
@@ -90,6 +95,15 @@ class StepDocumentationTests(unittest.TestCase):
             self.assertIn("step_have_status_account(context, status)", step_page)
             self.assertIn("`Given I have a active account`", step_page)
             self.assertIn("`features/demo.feature:", step_page)
+            self.assertIn("### Arguments", step_page)
+            self.assertIn("### Returns", step_page)
+            self.assertIn("### Raises", step_page)
+            self.assertIn(
+                "| `status` | `Status` | Parsed status enum from the custom "
+                "converter. |",
+                step_page,
+            )
+            self.assertNotIn("Args:\n", step_page)
 
     def test_generate_step_docs_is_repeatable_in_same_process(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -153,6 +167,17 @@ class Status(Enum):
 
 @parse.with_pattern(r"active|pending")
 def parse_status(text: str) -> Status:
+    \"\"\"Parse a textual account status.
+
+    Args:
+        text: Raw status token from the feature file.
+
+    Returns:
+        Status: Matching enum value.
+
+    Raises:
+        ValueError: If the feature token does not match a known status.
+    \"\"\"
     return Status(text)
 
 
@@ -168,7 +193,20 @@ from behave import given, then, when
 
 @given("I have a {status:Status} account")
 def step_have_status_account(context, status):
-    \"\"\"Use a custom status parser.\"\"\"
+    \"\"\"Use a custom status parser.
+
+    This summary should stay visible in the catalog page.
+
+    Args:
+        context: The Behave context for the current scenario.
+        status (Status): Parsed status enum from the custom converter.
+
+    Returns:
+        None: The step does not return a value.
+
+    Raises:
+        AssertionError: If the parsed status cannot be accepted.
+    \"\"\"
     del context, status
 
 

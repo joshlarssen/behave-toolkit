@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import textwrap
 from typing import Any, Iterator
 
 from behave.matchers import (
@@ -59,6 +60,20 @@ PARSE_RUNTIME_TYPE_HINTS = {
     "x": "int",
 }
 STEP_TYPES = ("given", "when", "then", "step")
+GOOGLE_DOCSTRING_SECTION_TITLES = {
+    "arg": "Arguments",
+    "args": "Arguments",
+    "argument": "Arguments",
+    "arguments": "Arguments",
+    "param": "Arguments",
+    "params": "Arguments",
+    "parameter": "Arguments",
+    "parameters": "Arguments",
+    "return": "Returns",
+    "returns": "Returns",
+    "raise": "Raises",
+    "raises": "Raises",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +148,26 @@ class DocumentationResult:
     output_dir: Path
     step_count: int
     type_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class DocstringField:
+    name: str
+    type_name: str | None
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class DocstringSection:
+    title: str
+    body: str | None = None
+    fields: list[DocstringField] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedDocstring:
+    overview: str | None
+    sections: list[DocstringSection] = field(default_factory=list)
 
 
 def generate_step_docs(
@@ -1188,6 +1223,241 @@ def _docstring_summary(docstring: str | None) -> str | None:
     return cleaned or None
 
 
+def _parse_docstring(docstring: str | None) -> ParsedDocstring | None:
+    if not docstring:
+        return None
+
+    normalized = inspect.cleandoc(docstring).strip()
+    if not normalized:
+        return None
+
+    overview_lines: list[str] = []
+    sections: list[DocstringSection] = []
+    current_title: str | None = None
+    current_lines: list[str] = []
+
+    for line in normalized.splitlines():
+        section_title = _google_docstring_section_title(line)
+        if section_title is not None:
+            if current_title is None:
+                overview = "\n".join(overview_lines).strip() or None
+            else:
+                sections.append(_build_docstring_section(current_title, current_lines))
+            current_title = section_title
+            current_lines = []
+            continue
+
+        if current_title is None:
+            overview_lines.append(line)
+        else:
+            current_lines.append(line)
+
+    overview = "\n".join(overview_lines).strip() or None
+    if current_title is not None:
+        sections.append(_build_docstring_section(current_title, current_lines))
+
+    return ParsedDocstring(overview=overview, sections=sections)
+
+
+def _google_docstring_section_title(line: str) -> str | None:
+    if line.lstrip() != line:
+        return None
+
+    stripped = line.strip()
+    if not stripped.endswith(":"):
+        return None
+
+    section_key = stripped[:-1].strip().lower()
+    return GOOGLE_DOCSTRING_SECTION_TITLES.get(section_key)
+
+
+def _build_docstring_section(title: str, lines: list[str]) -> DocstringSection:
+    content = textwrap.dedent("\n".join(lines)).strip()
+    if not content:
+        return DocstringSection(title=title)
+
+    if title == "Arguments":
+        fields = _parse_argument_fields(content)
+        if fields:
+            return DocstringSection(title=title, fields=fields)
+    elif title in {"Returns", "Raises"}:
+        fields = _parse_named_fields(content)
+        if fields:
+            return DocstringSection(title=title, fields=fields)
+
+    return DocstringSection(title=title, body=content)
+
+
+def _parse_argument_fields(content: str) -> list[DocstringField]:
+    fields: list[DocstringField] = []
+    current_name: str | None = None
+    current_type: str | None = None
+    current_description: list[str] = []
+    field_pattern = re.compile(
+        r"^(?P<name>[^:(]+?)(?:\s+\((?P<type>[^)]+)\))?:\s*(?P<description>.*)$"
+    )
+
+    for raw_line in content.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        match = field_pattern.match(stripped)
+        if match is not None:
+            if current_name is not None:
+                fields.append(
+                    DocstringField(
+                        name=current_name,
+                        type_name=current_type,
+                        description=_collapse_docstring_text(current_description),
+                    )
+                )
+            current_name = match.group("name").strip()
+            current_type = match.group("type")
+            current_description = [match.group("description").strip()]
+            continue
+
+        if current_name is None:
+            return []
+        current_description.append(stripped)
+
+    if current_name is not None:
+        fields.append(
+            DocstringField(
+                name=current_name,
+                type_name=current_type,
+                description=_collapse_docstring_text(current_description),
+            )
+        )
+
+    return fields
+
+
+def _parse_named_fields(content: str) -> list[DocstringField]:
+    fields: list[DocstringField] = []
+    current_name: str | None = None
+    current_description: list[str] = []
+    field_pattern = re.compile(r"^(?P<name>[^:]+):\s*(?P<description>.*)$")
+
+    for raw_line in content.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+
+        match = field_pattern.match(stripped)
+        if match is not None:
+            if current_name is not None:
+                fields.append(
+                    DocstringField(
+                        name=current_name,
+                        type_name=None,
+                        description=_collapse_docstring_text(current_description),
+                    )
+                )
+            current_name = match.group("name").strip()
+            current_description = [match.group("description").strip()]
+            continue
+
+        if current_name is None:
+            return []
+        current_description.append(stripped)
+
+    if current_name is not None:
+        fields.append(
+            DocstringField(
+                name=current_name,
+                type_name=None,
+                description=_collapse_docstring_text(current_description),
+            )
+        )
+
+    return fields
+
+
+def _collapse_docstring_text(lines: list[str]) -> str:
+    return " ".join(line for line in lines if line).strip()
+
+
+def _render_docstring_block(docstring: str) -> list[str]:
+    parsed = _parse_docstring(docstring)
+    if parsed is None:
+        return []
+
+    if not parsed.sections:
+        return [docstring, ""]
+
+    lines: list[str] = []
+    if parsed.overview:
+        lines.extend([parsed.overview, ""])
+
+    for section in parsed.sections:
+        rendered_section = _render_docstring_section(section)
+        if rendered_section:
+            lines.extend(rendered_section)
+
+    return lines
+
+
+def _render_docstring_section(section: DocstringSection) -> list[str]:
+    if not section.fields and not section.body:
+        return []
+
+    lines = [f"### {section.title}", ""]
+    if section.title == "Arguments" and section.fields:
+        lines.extend(
+            [
+                "| Name | Type | Description |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for doc_field in section.fields:
+            type_name = f"`{doc_field.type_name}`" if doc_field.type_name else "-"
+            lines.append(
+                "| "
+                f"`{doc_field.name}` | "
+                f"{type_name} | "
+                f"{_escape_table(doc_field.description or '-')} |"
+            )
+        lines.append("")
+        return lines
+
+    if section.title == "Returns" and section.fields:
+        lines.extend(
+            [
+                "| Type | Description |",
+                "| --- | --- |",
+            ]
+        )
+        for doc_field in section.fields:
+            lines.append(
+                "| "
+                f"`{doc_field.name}` | "
+                f"{_escape_table(doc_field.description or '-')} |"
+            )
+        lines.append("")
+        return lines
+
+    if section.title == "Raises" and section.fields:
+        lines.extend(
+            [
+                "| Exception | Description |",
+                "| --- | --- |",
+            ]
+        )
+        for doc_field in section.fields:
+            lines.append(
+                "| "
+                f"`{doc_field.name}` | "
+                f"{_escape_table(doc_field.description or '-')} |"
+            )
+        lines.append("")
+        return lines
+
+    if section.body:
+        lines.extend([section.body, ""])
+    return lines
+
+
 def _render_parameter_table(parameters: list[StepParameterDocumentation]) -> list[str]:
     lines = [
         "| Parameter | Pattern field | Behave type | Runtime value | Step annotation | Notes |",
@@ -1403,7 +1673,7 @@ def _render_step_page(step_doc: StepDocumentation) -> str:
         )
 
     if step_doc.docstring:
-        lines.extend(["## Full docstring", "", step_doc.docstring, ""])
+        lines.extend(["## Full docstring", "", *_render_docstring_block(step_doc.docstring)])
 
     lines.extend(
         [
@@ -1464,7 +1734,7 @@ def _render_type_page(type_doc: TypeDocumentation) -> str:
     lines.append("")
 
     if type_doc.docstring:
-        lines.extend(["## Summary", "", type_doc.docstring, ""])
+        lines.extend(["## Summary", "", *_render_docstring_block(type_doc.docstring)])
 
     if type_doc.enum_members:
         lines.extend(
