@@ -1,5 +1,5 @@
 """Generate Sphinx-friendly step documentation for Behave projects."""
-# pylint: disable=too-many-lines,line-too-long,duplicate-code
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -31,7 +31,6 @@ from behave.runner_util import PathManager, exec_file
 from behave.step_registry import registry, setup_step_decorators
 
 from .errors import DocumentationError
-from .step_search import render_search_index_json
 
 FIELD_PATTERN = re.compile(r"\{([^}]*)\}")
 SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
@@ -920,11 +919,9 @@ def _display_path(path_value: str | Path, project_root: Path) -> str:
 
 def _render_catalog(catalog: _Catalog, output_dir: Path, site_title: str) -> None:
     _prepare_output_dir(output_dir)
-    search_dir = output_dir / "search"
     steps_dir = output_dir / "steps"
     types_dir = output_dir / "types"
     static_dir = output_dir / "_static"
-    search_dir.mkdir(parents=True, exist_ok=True)
     steps_dir.mkdir(parents=True, exist_ok=True)
     types_dir.mkdir(parents=True, exist_ok=True)
     static_dir.mkdir(parents=True, exist_ok=True)
@@ -932,13 +929,7 @@ def _render_catalog(catalog: _Catalog, output_dir: Path, site_title: str) -> Non
     grouped_steps = _group_steps_by_type(catalog.steps)
     _write_text(output_dir / "conf.py", _render_sphinx_conf(site_title))
     _write_text(static_dir / "behave-toolkit.css", _render_sphinx_css())
-    _write_text(static_dir / "behave-toolkit-search.js", _render_step_search_javascript())
-    _write_text(
-        static_dir / "behave-toolkit-search-index.json",
-        render_search_index_json(catalog.steps),
-    )
     _write_text(output_dir / "index.md", _render_root_index(catalog, site_title))
-    _write_text(search_dir / "index.md", _render_search_page())
     _write_text(steps_dir / "index.md", _render_steps_index(catalog.steps))
     for step_type in STEP_TYPES:
         step_group = grouped_steps[step_type]
@@ -958,7 +949,7 @@ def _render_catalog(catalog: _Catalog, output_dir: Path, site_title: str) -> Non
 
 def _prepare_output_dir(output_dir: Path) -> None:
     if output_dir.exists():
-        for child_name in ("_static", "conf.py", "index.md", "search", "steps", "types"):
+        for child_name in ("_static", "conf.py", "index.md", "steps", "types"):
             child_path = output_dir / child_name
             if child_path.is_file():
                 child_path.unlink()
@@ -980,7 +971,6 @@ def _render_sphinx_conf(site_title: str) -> str:
             "templates_path = []",
             "html_static_path = ['_static']",
             "html_css_files = ['behave-toolkit.css']",
-            "html_js_files = ['behave-toolkit-search.js']",
             "html_theme = 'furo'",
             "myst_heading_anchors = 3",
             "myst_enable_extensions = ['colon_fence', 'deflist']",
@@ -1024,72 +1014,6 @@ def _render_sphinx_css() -> str:
             "  font-weight: 700;",
             "}",
             "",
-            ".bt-step-search {",
-            "  display: grid;",
-            "  gap: 1rem;",
-            "}",
-            "",
-            ".bt-step-search-form {",
-            "  display: grid;",
-            "  gap: 0.5rem;",
-            "}",
-            "",
-            ".bt-step-search-form input {",
-            "  width: 100%;",
-            "  padding: 0.85rem 1rem;",
-            "  border: 1px solid var(--color-background-border);",
-            "  border-radius: var(--bt-radius);",
-            "  font: inherit;",
-            "  background: var(--color-background-secondary);",
-            "}",
-            "",
-            ".bt-step-search-help,",
-            ".bt-step-search-status {",
-            "  margin: 0;",
-            "  color: var(--color-foreground-secondary);",
-            "}",
-            "",
-            ".bt-step-search-results {",
-            "  display: grid;",
-            "  gap: 1rem;",
-            "}",
-            "",
-            ".bt-step-search-result {",
-            "  border: 1px solid var(--color-background-border);",
-            "  border-radius: var(--bt-radius);",
-            "  padding: 1rem 1.1rem;",
-            "  background: var(--color-background-secondary);",
-            "}",
-            "",
-            ".bt-step-search-result h3 {",
-            "  margin: 0 0 0.4rem 0;",
-            "  border-top: 0;",
-            "  padding-top: 0;",
-            "}",
-            "",
-            ".bt-step-search-meta {",
-            "  display: flex;",
-            "  flex-wrap: wrap;",
-            "  gap: 0.5rem 0.75rem;",
-            "  margin: 0 0 0.75rem 0;",
-            "  font-size: 0.95rem;",
-            "  color: var(--color-foreground-secondary);",
-            "}",
-            "",
-            ".bt-step-search-pattern {",
-            "  margin: 0.75rem 0;",
-            "}",
-            "",
-            ".bt-step-search-examples {",
-            "  margin: 0.75rem 0 0 1.15rem;",
-            "}",
-            "",
-            ".bt-step-search-empty {",
-            "  border: 1px dashed var(--color-background-border);",
-            "  border-radius: var(--bt-radius);",
-            "  padding: 1rem 1.1rem;",
-            "}",
-            "",
         ]
     ) + "\n"
 
@@ -1102,21 +1026,13 @@ def _render_root_index(catalog: _Catalog, site_title: str) -> str:
     lines = [
         f"# {site_title}",
         "",
-        _myst_toctree(["search/index", "steps/index", "types/index"], maxdepth=2, hidden=True),
+        _myst_toctree(["steps/index", "types/index"], maxdepth=2, hidden=True),
         "",
         "This technical reference is generated by `behave-toolkit` for a",
         "Sphinx-based HTML site.",
         "",
         _render_doc_cards(
             [
-                (
-                    "Step search",
-                    "search/index",
-                    [
-                        "Find the most relevant steps from titles, docstrings,",
-                        "parameters, and real feature-file examples.",
-                    ],
-                ),
                 (
                     "Step reference",
                     "steps/index",
@@ -1138,7 +1054,6 @@ def _render_root_index(catalog: _Catalog, site_title: str) -> str:
         "",
         "## Navigation",
         "",
-        "- [Step search](search/index.md) (ranked relevance search for steps)",
         f"- [Step reference](steps/index.md) ({len(catalog.steps)} step pages)",
         f"- [Type reference](types/index.md) ({len(catalog.types)} type pages)",
         "",
@@ -1175,21 +1090,13 @@ def _render_steps_index(step_docs: list[StepDocumentation]) -> str:
     lines = [
         "# Step reference",
         "",
-        _myst_toctree(["../search/index", *step_type_entries], maxdepth=1, hidden=True),
+        _myst_toctree(step_type_entries, maxdepth=1, hidden=True),
         "",
         "Browse steps by keyword. Each keyword page contains the full catalog",
         "entries plus direct links to the individual implementation pages.",
         "",
-        _render_doc_cards([
-            (
-                "Step search",
-                "../search/index",
-                [
-                    "Search titles, summaries, parameters, and examples",
-                    "to surface the most relevant steps quickly.",
-                ],
-            ),
-            *[
+        _render_doc_cards(
+            [
                 (
                     _step_type_label(step_type),
                     _step_type_file_name(step_type),
@@ -1199,8 +1106,8 @@ def _render_steps_index(step_docs: list[StepDocumentation]) -> str:
                 )
                 for step_type in STEP_TYPES
                 if grouped_steps[step_type]
-            ],
-        ]),
+            ]
+        ),
         "",
         "| Keyword | Count | Link |",
         "| --- | ---: | --- |",
@@ -1695,278 +1602,6 @@ def _myst_toctree(
     lines.extend(entries)
     lines.append("```")
     return "\n".join(lines)
-
-
-def _render_search_page() -> str:
-    return textwrap.dedent(
-        """
-        # Step search
-
-        [<- Back to home](../index.md)
-
-        Search step titles, docstring summaries, full docstrings, parameter
-        names and types, plus real feature-file examples. This makes it easier
-        to find the right step when the suite becomes large.
-
-        <div class="bt-step-search" data-bt-step-search data-index-path="../_static/behave-toolkit-search-index.json">
-          <form class="bt-step-search-form" data-bt-step-search-form>
-            <label for="bt-step-search-query"><strong>Search the step catalog</strong></label>
-            <input
-              id="bt-step-search-query"
-              data-bt-step-search-input
-              type="search"
-              placeholder="Try: blocked account report, dashboard tabs, billing requests"
-              autocomplete="off"
-            />
-          </form>
-          <p class="bt-step-search-help">
-            Ranking combines step names, docstrings, parameters, and examples.
-          </p>
-          <p class="bt-step-search-status" data-bt-step-search-status>
-            Loading the step search index...
-          </p>
-          <div class="bt-step-search-results" data-bt-step-search-results></div>
-        </div>
-        """
-    ).strip() + "\n"
-
-
-def _render_step_search_javascript() -> str:
-    return textwrap.dedent(
-        """
-        (() => {
-          const stopWords = new Set(['a', 'an', 'and', 'for', 'from', 'i', 'in', 'into', 'is', 'of', 'on', 'or', 'the', 'to', 'with']);
-
-          function normalizeText(text) {
-            return text
-              .normalize('NFKD')
-              .replace(/[\\u0300-\\u036f]/g, '')
-              .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-              .toLowerCase()
-              .replace(/\\s+/g, ' ')
-              .trim();
-          }
-
-          function tokenize(text) {
-            const normalized = normalizeText(text);
-            const matches = normalized.match(/[a-z0-9]+/g) || [];
-            const unique = [];
-            const seen = new Set();
-            for (const token of matches) {
-              if (token.length <= 1 || stopWords.has(token) || seen.has(token)) {
-                continue;
-              }
-              seen.add(token);
-              unique.push(token);
-            }
-            return unique;
-          }
-
-          function bestPartialTermWeight(entry, term) {
-            if (term.length < 4) {
-              return 0;
-            }
-
-            let bestWeight = 0;
-            for (const candidate of Object.keys(entry.token_weights)) {
-              if (candidate.startsWith(term) || term.startsWith(candidate) || candidate.includes(term)) {
-                bestWeight = Math.max(bestWeight, entry.token_weights[candidate]);
-              }
-            }
-            return bestWeight;
-          }
-
-          function scoreEntry(entry, normalizedQuery, queryTerms) {
-            let score = 0;
-            let matchedTerms = 0;
-            let exactMatches = 0;
-
-            for (const term of queryTerms) {
-              if (entry.token_weights[term] !== undefined) {
-                score += entry.token_weights[term];
-                matchedTerms += 1;
-                exactMatches += 1;
-                continue;
-              }
-
-              const partialWeight = bestPartialTermWeight(entry, term);
-              if (partialWeight > 0) {
-                score += partialWeight * 0.55;
-                matchedTerms += 0.55;
-              }
-            }
-
-            if (normalizedQuery && entry.title_text.includes(normalizedQuery)) {
-              score += 10;
-            } else if (normalizedQuery && entry.summary_text.includes(normalizedQuery)) {
-              score += 7;
-            } else if (normalizedQuery && entry.search_text.includes(normalizedQuery)) {
-              score += 5;
-            }
-
-            if (exactMatches === queryTerms.length && exactMatches > 0) {
-              score += 4;
-            }
-
-            if (queryTerms.length > 0) {
-              score += (matchedTerms / queryTerms.length) * 6;
-            }
-
-            if (matchedTerms === 0 && (!normalizedQuery || !entry.search_text.includes(normalizedQuery))) {
-              return 0;
-            }
-
-            return score / (1 + ((entry.term_count || 0) * 0.01));
-          }
-
-          function updateUrl(query) {
-            const url = new URL(window.location.href);
-            if (query) {
-              url.searchParams.set('q', query);
-            } else {
-              url.searchParams.delete('q');
-            }
-            window.history.replaceState({}, '', url);
-          }
-
-          function renderEmptyState(resultsNode, message) {
-            resultsNode.replaceChildren();
-            const container = document.createElement('div');
-            container.className = 'bt-step-search-empty';
-            const paragraph = document.createElement('p');
-            paragraph.textContent = message;
-            container.appendChild(paragraph);
-            resultsNode.appendChild(container);
-          }
-
-          function renderResults(resultsNode, rankedEntries) {
-            resultsNode.replaceChildren();
-
-            for (const entry of rankedEntries) {
-              const article = document.createElement('article');
-              article.className = 'bt-step-search-result';
-
-              const heading = document.createElement('h3');
-              const link = document.createElement('a');
-              link.href = '../' + entry.html_path;
-              link.textContent = entry.title;
-              heading.appendChild(link);
-              article.appendChild(heading);
-
-              const meta = document.createElement('p');
-              meta.className = 'bt-step-search-meta';
-              meta.textContent = `${entry.step_type.toUpperCase()} | ${entry.matcher} | ${entry.source}`;
-              article.appendChild(meta);
-
-              if (entry.summary) {
-                const summary = document.createElement('p');
-                summary.textContent = entry.summary;
-                article.appendChild(summary);
-              }
-
-              const pattern = document.createElement('p');
-              pattern.className = 'bt-step-search-pattern';
-              const patternLabel = document.createElement('strong');
-              patternLabel.textContent = 'Pattern:';
-              pattern.appendChild(patternLabel);
-              pattern.appendChild(document.createTextNode(' '));
-              const patternCode = document.createElement('code');
-              patternCode.textContent = entry.pattern;
-              pattern.appendChild(patternCode);
-              article.appendChild(pattern);
-
-              if (entry.examples && entry.examples.length > 0) {
-                const examplesHeading = document.createElement('p');
-                const examplesLabel = document.createElement('strong');
-                examplesLabel.textContent = 'Examples';
-                examplesHeading.appendChild(examplesLabel);
-                article.appendChild(examplesHeading);
-
-                const list = document.createElement('ul');
-                list.className = 'bt-step-search-examples';
-                for (const exampleText of entry.examples.slice(0, 2)) {
-                  const item = document.createElement('li');
-                  const code = document.createElement('code');
-                  code.textContent = exampleText;
-                  item.appendChild(code);
-                  list.appendChild(item);
-                }
-                article.appendChild(list);
-              }
-
-              resultsNode.appendChild(article);
-            }
-          }
-
-          async function initializeSearch(container) {
-            const input = container.querySelector('[data-bt-step-search-input]');
-            const status = container.querySelector('[data-bt-step-search-status]');
-            const results = container.querySelector('[data-bt-step-search-results]');
-            const indexPath = container.dataset.indexPath;
-
-            if (!input || !status || !results || !indexPath) {
-              return;
-            }
-
-            const queryFromUrl = new URLSearchParams(window.location.search).get('q') || '';
-            input.value = queryFromUrl;
-
-            let entries = [];
-            try {
-              const response = await window.fetch(indexPath, { cache: 'no-cache' });
-              if (!response.ok) {
-                throw new Error(`Could not load search index (${response.status}).`);
-              }
-              const payload = await response.json();
-              entries = Array.isArray(payload.entries) ? payload.entries : [];
-            } catch (error) {
-              status.textContent = error instanceof Error ? error.message : 'Could not load the search index.';
-              renderEmptyState(results, 'The step search index could not be loaded.');
-              return;
-            }
-
-            function runSearch(rawQuery) {
-              const normalizedQuery = normalizeText(rawQuery);
-              const queryTerms = tokenize(rawQuery);
-              updateUrl(rawQuery.trim());
-
-              if (!normalizedQuery || queryTerms.length === 0) {
-                status.textContent = 'Start typing to search across step names, summaries, parameters, and examples.';
-                renderEmptyState(
-                  results,
-                  'Try a natural-language query such as "blocked account report" or "billing requests".'
-                );
-                return;
-              }
-
-              const rankedEntries = entries
-                .map((entry) => ({ ...entry, _score: scoreEntry(entry, normalizedQuery, queryTerms) }))
-                .filter((entry) => entry._score > 0)
-                .sort((left, right) => right._score - left._score || left.title.localeCompare(right.title))
-                .slice(0, 12);
-
-              if (rankedEntries.length === 0) {
-                status.textContent = `No relevant steps found for "${rawQuery}".`;
-                renderEmptyState(results, 'Try a broader phrase or reuse words from a step docstring or feature example.');
-                return;
-              }
-
-              status.textContent = `${rankedEntries.length} relevant step${rankedEntries.length === 1 ? '' : 's'} found for "${rawQuery}".`;
-              renderResults(results, rankedEntries);
-            }
-
-            input.addEventListener('input', () => runSearch(input.value));
-            runSearch(queryFromUrl);
-          }
-
-          window.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('[data-bt-step-search]').forEach((container) => {
-              initializeSearch(container);
-            });
-          });
-        })();
-        """
-    ).strip() + "\n"
 
 
 def _render_doc_cards(

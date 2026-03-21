@@ -12,7 +12,6 @@ from .plugin import (
 )
 from .scopes import Scope
 from .step_docs import DocumentationResult, generate_step_docs
-from .step_search import StepSearchResult, search_steps
 
 __all__ = [
     "ConfigError",
@@ -22,7 +21,6 @@ __all__ = [
     "LifecycleManager",
     "ObjectSpec",
     "Scope",
-    "StepSearchResult",
     "ToolkitConfig",
     "ToolkitError",
     "activate_feature_scope",
@@ -34,7 +32,6 @@ __all__ = [
     "load_config",
     "load_yaml_file",
     "load_yaml_text",
-    "search_steps",
 ]
 
 __version__ = "0.1.0"

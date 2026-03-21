@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from behave_toolkit import DocumentationError, DocumentationResult, generate_step_docs
-from test_support import write_step_docs_fixture
 
 
 class StepDocumentationTests(unittest.TestCase):
@@ -22,30 +20,17 @@ class StepDocumentationTests(unittest.TestCase):
             self.assertTrue((output_dir / "steps" / "given.md").is_file())
             self.assertTrue((output_dir / "steps" / "when.md").is_file())
             self.assertTrue((output_dir / "types" / "index.md").is_file())
-            self.assertTrue((output_dir / "search" / "index.md").is_file())
-            self.assertTrue((output_dir / "_static" / "behave-toolkit-search.js").is_file())
-            self.assertTrue(
-                (output_dir / "_static" / "behave-toolkit-search-index.json").is_file()
-            )
 
             conf_text = (output_dir / "conf.py").read_text(encoding="utf-8")
             self.assertIn("'sphinx_design'", conf_text)
-            self.assertIn("'behave-toolkit-search.js'", conf_text)
 
             root_index = (output_dir / "index.md").read_text(encoding="utf-8")
             self.assertIn("```{toctree}", root_index)
-            self.assertIn("search/index", root_index)
             self.assertIn("steps/index", root_index)
             self.assertIn("types/index", root_index)
-            self.assertIn(":::{grid-item-card} Step search", root_index)
             self.assertIn(":::{grid-item-card} Step reference", root_index)
 
-            search_index = (output_dir / "search" / "index.md").read_text(encoding="utf-8")
-            self.assertIn("Search step titles, docstring summaries", search_index)
-            self.assertIn("data-bt-step-search", search_index)
-
             steps_index = (output_dir / "steps" / "index.md").read_text(encoding="utf-8")
-            self.assertIn("../search/index", steps_index)
             self.assertIn("given.md", steps_index)
             self.assertIn("when.md", steps_index)
             self.assertIn("then.md", steps_index)
@@ -120,19 +105,10 @@ class StepDocumentationTests(unittest.TestCase):
             )
             self.assertNotIn("Args:\n", step_page)
 
-            search_payload = json.loads(
-                (output_dir / "_static" / "behave-toolkit-search-index.json").read_text(
-                    encoding="utf-8"
-                )
-            )
-            self.assertEqual(search_payload["version"], 1)
-            entry_titles = {entry["title"] for entry in search_payload["entries"]}
-            self.assertIn("Given I have a {status:Status} account", entry_titles)
-
     def test_generate_step_docs_is_repeatable_in_same_process(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             project_root = Path(tmpdir)
-            features_dir = write_step_docs_fixture(project_root)
+            features_dir = self._write_behave_project(project_root)
             output_dir = project_root / "docs" / "behave-toolkit"
 
             first_result = generate_step_docs(features_dir, output_dir)
@@ -159,7 +135,7 @@ class StepDocumentationTests(unittest.TestCase):
         self,
         project_root: Path,
     ) -> tuple[Path, DocumentationResult]:
-        features_dir = write_step_docs_fixture(project_root)
+        features_dir = self._write_behave_project(project_root)
         output_dir = project_root / "docs" / "behave-toolkit"
         result = generate_step_docs(
             features_dir,
@@ -167,6 +143,99 @@ class StepDocumentationTests(unittest.TestCase):
             site_title="QA Step Catalog",
         )
         return output_dir, result
+
+    def _write_behave_project(self, project_root: Path) -> Path:
+        features_dir = project_root / "features"
+        steps_dir = features_dir / "steps"
+        steps_dir.mkdir(parents=True)
+
+        (features_dir / "environment.py").write_text(
+            """
+from enum import Enum
+
+import parse
+
+from behave import register_type, use_step_matcher
+
+use_step_matcher("cfparse")
+
+
+class Status(Enum):
+    ACTIVE = "active"
+    PENDING = "pending"
+
+
+@parse.with_pattern(r"active|pending")
+def parse_status(text: str) -> Status:
+    \"\"\"Parse a textual account status.
+
+    Args:
+        text: Raw status token from the feature file.
+
+    Returns:
+        Status: Matching enum value.
+
+    Raises:
+        ValueError: If the feature token does not match a known status.
+    \"\"\"
+    return Status(text)
+
+
+register_type(Status=parse_status)
+            """.strip(),
+            encoding="utf-8",
+        )
+
+        (steps_dir / "account_steps.py").write_text(
+            """
+from behave import given, then, when
+
+
+@given("I have a {status:Status} account")
+def step_have_status_account(context, status):
+    \"\"\"Use a custom status parser.
+
+    This summary should stay visible in the catalog page.
+
+    Args:
+        context: The Behave context for the current scenario.
+        status (Status): Parsed status enum from the custom converter.
+
+    Returns:
+        None: The step does not return a value.
+
+    Raises:
+        AssertionError: If the parsed status cannot be accepted.
+    \"\"\"
+    del context, status
+
+
+@when("I open {count:d} tabs")
+def step_open_tabs(context, count):
+    \"\"\"Open a dashboard tab count.\"\"\"
+    del context, count
+
+
+@then("the dashboard is ready")
+def step_dashboard_ready(context):
+    \"\"\"The dashboard should be fully loaded.\"\"\"
+    del context
+            """.strip(),
+            encoding="utf-8",
+        )
+
+        (features_dir / "demo.feature").write_text(
+            """
+Feature: Demo step catalog
+
+  Scenario: Account overview
+    Given I have a active account
+    When I open 2 tabs
+    Then the dashboard is ready
+            """.strip(),
+            encoding="utf-8",
+        )
+        return features_dir
 
 
 if __name__ == "__main__":

@@ -24,7 +24,6 @@ classifiers = [
 
 [project.scripts]
 behave-toolkit-docs = "behave_toolkit.step_docs:main"
-behave-toolkit-search = "behave_toolkit.step_search:main"
 
 [project.optional-dependencies]
 dev = [
