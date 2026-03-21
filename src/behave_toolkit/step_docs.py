@@ -1,4 +1,4 @@
-"""Generate MkDocs-friendly step documentation for Behave projects."""
+"""Generate Sphinx-friendly step documentation for Behave projects."""
 # pylint: disable=too-many-lines
 
 from __future__ import annotations
@@ -93,6 +93,7 @@ class StepDocumentation:
     source_path: str
     source_line: int
     function_name: str
+    signature: str | None
     docstring: str | None
     parameters: list[StepParameterDocumentation] = field(default_factory=list)
     examples: list[StepExample] = field(default_factory=list)
@@ -116,6 +117,7 @@ class TypeDocumentation:
     name: str
     slug: str
     converter_name: str
+    signature: str | None
     pattern: str | None
     python_type: str | None
     source_path: str | None
@@ -140,7 +142,7 @@ def generate_step_docs(
     site_title: str = "Behave step documentation",
     max_examples_per_step: int = 3,
 ) -> DocumentationResult:
-    """Generate Markdown documentation for a Behave project."""
+    """Generate Sphinx-ready documentation sources for a Behave project."""
 
     resolved_features_dir = Path(features_dir).expanduser().resolve()
     resolved_output_dir = Path(output_dir).expanduser().resolve()
@@ -321,6 +323,7 @@ def _build_type_docs(project_root: Path) -> dict[str, TypeDocumentation]:
             name=name,
             slug=_slugify(name),
             converter_name=_callable_name(converter),
+            signature=_callable_signature(converter),
             pattern=_converter_pattern(converter),
             python_type=_callable_return_type(converter),
             source_path=source_path,
@@ -363,6 +366,7 @@ def _build_step_docs(
                 source_path=source_path,
                 source_line=matcher.location.line,
                 function_name=_callable_name(matcher.func),
+                signature=_callable_signature(matcher.func),
                 docstring=inspect.getdoc(matcher.func),
                 parameters=parameters,
             )
@@ -783,6 +787,46 @@ def _format_annotation(
     return formatted.replace("typing.", "")
 
 
+def _callable_signature(callable_obj: Any) -> str | None:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return None
+
+    globals_namespace = getattr(callable_obj, "__globals__", None)
+    rendered_parameters: list[str] = []
+    seen_keyword_only = False
+    for parameter in signature.parameters.values():
+        prefix = ""
+        if parameter.kind is inspect.Parameter.VAR_POSITIONAL:
+            prefix = "*"
+        elif parameter.kind is inspect.Parameter.VAR_KEYWORD:
+            prefix = "**"
+        elif (
+            parameter.kind is inspect.Parameter.KEYWORD_ONLY
+            and not seen_keyword_only
+        ):
+            rendered_parameters.append("*")
+            seen_keyword_only = True
+
+        rendered = f"{prefix}{parameter.name}"
+        annotation = _format_annotation(parameter.annotation, globals_namespace)
+        if annotation:
+            rendered += f": {annotation}"
+        if parameter.default is not inspect.Signature.empty:
+            rendered += f" = {parameter.default!r}"
+        rendered_parameters.append(rendered)
+
+    return_annotation = _format_annotation(
+        signature.return_annotation,
+        globals_namespace,
+    )
+    rendered_signature = f"{_callable_name(callable_obj)}({', '.join(rendered_parameters)})"
+    if return_annotation:
+        rendered_signature += f" -> {return_annotation}"
+    return rendered_signature
+
+
 def _converter_pattern(callable_obj: Any) -> str | None:
     pattern = getattr(callable_obj, "pattern", None)
     if pattern is None:
@@ -842,11 +886,24 @@ def _render_catalog(catalog: _Catalog, output_dir: Path, site_title: str) -> Non
     _prepare_output_dir(output_dir)
     steps_dir = output_dir / "steps"
     types_dir = output_dir / "types"
+    static_dir = output_dir / "_static"
     steps_dir.mkdir(parents=True, exist_ok=True)
     types_dir.mkdir(parents=True, exist_ok=True)
+    static_dir.mkdir(parents=True, exist_ok=True)
 
+    grouped_steps = _group_steps_by_type(catalog.steps)
+    _write_text(output_dir / "conf.py", _render_sphinx_conf(site_title))
+    _write_text(static_dir / "behave-toolkit.css", _render_sphinx_css())
     _write_text(output_dir / "index.md", _render_root_index(catalog, site_title))
     _write_text(steps_dir / "index.md", _render_steps_index(catalog.steps))
+    for step_type in STEP_TYPES:
+        step_group = grouped_steps[step_type]
+        if not step_group:
+            continue
+        _write_text(
+            steps_dir / f"{_step_type_file_name(step_type)}.md",
+            _render_step_keyword_page(step_type, step_group),
+        )
     _write_text(types_dir / "index.md", _render_types_index(catalog.types))
 
     for step_doc in catalog.steps:
@@ -857,13 +914,64 @@ def _render_catalog(catalog: _Catalog, output_dir: Path, site_title: str) -> Non
 
 def _prepare_output_dir(output_dir: Path) -> None:
     if output_dir.exists():
-        for child_name in ("index.md", "steps", "types"):
+        for child_name in ("_static", "conf.py", "index.md", "steps", "types"):
             child_path = output_dir / child_name
             if child_path.is_file():
                 child_path.unlink()
             elif child_path.is_dir():
                 shutil.rmtree(child_path)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+
+def _render_sphinx_conf(site_title: str) -> str:
+    title = repr(site_title)
+    return "\n".join(
+        [
+            f"project = {title}",
+            f"html_title = {title}",
+            "extensions = ['myst_parser']",
+            "source_suffix = {'.md': 'markdown'}",
+            "root_doc = 'index'",
+            "exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']",
+            "templates_path = []",
+            "html_static_path = ['_static']",
+            "html_css_files = ['behave-toolkit.css']",
+            "html_theme = 'furo'",
+            "myst_heading_anchors = 3",
+            "myst_enable_extensions = ['colon_fence', 'deflist']",
+            "",
+        ]
+    )
+
+
+def _render_sphinx_css() -> str:
+    return "\n".join(
+        [
+            ":root {",
+            "  --bt-radius: 0.75rem;",
+            "}",
+            "",
+            ".bd-content table td code,",
+            ".bd-content table th code {",
+            "  white-space: nowrap;",
+            "}",
+            "",
+            ".bd-content h3 {",
+            "  margin-top: 2rem;",
+            "  padding-top: 0.5rem;",
+            "  border-top: 1px solid var(--color-background-border);",
+            "}",
+            "",
+            ".bd-content blockquote {",
+            "  font-size: 1rem;",
+            "}",
+            "",
+            ".bd-content pre {",
+            "  border-radius: var(--bt-radius);",
+            "}",
+            "",
+        ]
+    ) + "\n"
 
 
 def _render_root_index(catalog: _Catalog, site_title: str) -> str:
@@ -874,11 +982,15 @@ def _render_root_index(catalog: _Catalog, site_title: str) -> str:
     lines = [
         f"# {site_title}",
         "",
-        "This catalog is generated by `behave-toolkit` and is ready to be served",
-        "with a static site tool such as MkDocs Material.",
+        _myst_toctree(["steps/index", "types/index"], maxdepth=2, hidden=True),
         "",
-        f"- [Step catalog](steps/index.md) ({len(catalog.steps)} pages)",
-        f"- [Custom type catalog](types/index.md) ({len(catalog.types)} pages)",
+        "This technical reference is generated by `behave-toolkit` for a",
+        "Sphinx-based HTML site.",
+        "",
+        "## Navigation",
+        "",
+        f"- [Step reference](steps/index.md) ({len(catalog.steps)} step pages)",
+        f"- [Type reference](types/index.md) ({len(catalog.types)} type pages)",
         "",
         "## Coverage",
         "",
@@ -905,32 +1017,55 @@ def _render_root_index(catalog: _Catalog, site_title: str) -> str:
 
 def _render_steps_index(step_docs: list[StepDocumentation]) -> str:
     grouped_steps = _group_steps_by_type(step_docs)
+    step_type_entries = [
+        _step_type_file_name(step_type)
+        for step_type in STEP_TYPES
+        if grouped_steps[step_type]
+    ]
     lines = [
-        "# Step catalog",
+        "# Step reference",
         "",
-        "Use this page as the main browsing view for step definitions.",
-        "Each entry embeds the docstring summary, parameter details, and real",
-        "feature-file examples so you do not need to jump back and forth.",
+        _myst_toctree(step_type_entries, maxdepth=1, hidden=True),
         "",
-        "## Jump by keyword",
+        "Browse steps by keyword. Each keyword page contains the full catalog",
+        "entries plus direct links to the individual implementation pages.",
         "",
+        "| Keyword | Count | Link |",
+        "| --- | ---: | --- |",
     ]
 
     for step_type in STEP_TYPES:
         if grouped_steps[step_type]:
             lines.append(
-                f"- [{_step_type_label(step_type)}](#{_slugify(_step_type_label(step_type))})"
+                "| "
+                f"{_step_type_label(step_type)} | "
+                f"{len(grouped_steps[step_type])} | "
+                f"[Open {_step_type_label(step_type).lower()} reference]"
+                f"({_step_type_file_name(step_type)}.md) |"
             )
 
-    for step_type in STEP_TYPES:
-        step_group = grouped_steps[step_type]
-        if not step_group:
-            continue
+    return "\n".join(lines) + "\n"
 
-        lines.extend(["", f"## {_step_type_label(step_type)}", ""])
-        for step_doc in step_group:
-            lines.extend(_render_step_catalog_entry(step_doc))
-            lines.append("")
+
+def _render_step_keyword_page(
+    step_type: str,
+    step_group: list[StepDocumentation],
+) -> str:
+    label = _step_type_label(step_type)
+    lines = [
+        f"# {label} steps",
+        "",
+        "[<- Back to step reference](index.md)",
+        "",
+        _myst_toctree([step_doc.slug for step_doc in step_group], maxdepth=1, hidden=True),
+        "",
+        f"This page groups all `{label}` step implementations.",
+        "",
+    ]
+
+    for step_doc in step_group:
+        lines.extend(_render_step_catalog_entry(step_doc))
+        lines.append("")
 
     return "\n".join(lines) + "\n"
 
@@ -960,6 +1095,7 @@ def _render_step_catalog_entry(step_doc: StepDocumentation) -> list[str]:
         [
             f"- Matcher: `{step_doc.matcher}`",
             f"- Function: `{step_doc.function_name}()`",
+            f"- Signature: `{step_doc.signature or step_doc.function_name}`",
             f"- Source: `{step_doc.source_path}:{step_doc.source_line}`",
         ]
     )
@@ -991,6 +1127,12 @@ def _step_type_label(step_type: str) -> str:
     if step_type == "step":
         return "Generic"
     return step_type.capitalize()
+
+
+def _step_type_file_name(step_type: str) -> str:
+    if step_type == "step":
+        return "generic"
+    return step_type
 
 
 def _docstring_summary(docstring: str | None) -> str | None:
@@ -1063,8 +1205,12 @@ def _parameter_notes_text(parameter: StepParameterDocumentation) -> str:
 
 
 def _render_types_index(type_docs: dict[str, TypeDocumentation]) -> str:
+    type_entries = [
+        type_doc.slug
+        for type_doc in sorted(type_docs.values(), key=lambda value: value.name.lower())
+    ]
     lines = [
-        "# Custom type catalog",
+        "# Type reference",
         "",
     ]
     if not type_docs:
@@ -1076,6 +1222,15 @@ def _render_types_index(type_docs: dict[str, TypeDocumentation]) -> str:
         )
         return "\n".join(lines)
 
+    lines.extend(
+        [
+            _myst_toctree(type_entries, maxdepth=1, hidden=True),
+            "",
+            "Each custom type page explains the converter signature, runtime",
+            "type, enum values, and the steps that reference it.",
+            "",
+        ]
+    )
     lines.extend(
         [
             "| Type | Pattern | Python type | Used by | Source |",
@@ -1099,11 +1254,31 @@ def _render_types_index(type_docs: dict[str, TypeDocumentation]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _myst_toctree(
+    entries: list[str],
+    *,
+    maxdepth: int,
+    hidden: bool,
+) -> str:
+    if not entries:
+        return ""
+
+    lines = ["```{toctree}"]
+    if hidden:
+        lines.append(":hidden:")
+    lines.append(f":maxdepth: {maxdepth}")
+    lines.append("")
+    lines.extend(entries)
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def _render_step_page(step_doc: StepDocumentation) -> str:
     lines = [
         f"# {step_doc.title}",
         "",
-        "[<- Back to step catalog](index.md)",
+        f"[<- Back to {_step_type_label(step_doc.step_type).lower()} steps]"
+        f"({_step_type_file_name(step_doc.step_type)}.md)",
         "",
     ]
 
@@ -1126,6 +1301,18 @@ def _render_step_page(step_doc: StepDocumentation) -> str:
             "",
         ]
     )
+
+    if step_doc.signature:
+        lines.extend(
+            [
+                "## Signature",
+                "",
+                "```python",
+                step_doc.signature,
+                "```",
+                "",
+            ]
+        )
 
     if step_doc.docstring:
         lines.extend(["## Full docstring", "", step_doc.docstring, ""])
@@ -1162,8 +1349,21 @@ def _render_type_page(type_doc: TypeDocumentation) -> str:
     lines = [
         f"# Type `{type_doc.name}`",
         "",
+        "[<- Back to type reference](index.md)",
+        "",
         f"- Converter: `{type_doc.converter_name}()`",
     ]
+    if type_doc.signature:
+        lines.extend(
+            [
+                "",
+                "## Signature",
+                "",
+                "```python",
+                type_doc.signature,
+                "```",
+            ]
+        )
     if type_doc.pattern:
         lines.append(f"- Parse pattern: `{type_doc.pattern}`")
     if type_doc.python_type:
@@ -1216,7 +1416,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="behave-toolkit-docs",
-        description="Generate MkDocs-friendly Behave step documentation.",
+        description="Generate Sphinx-friendly Behave step documentation.",
     )
     parser.add_argument(
         "--features-dir",

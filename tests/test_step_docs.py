@@ -4,43 +4,60 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from behave_toolkit import DocumentationError, generate_step_docs
+from behave_toolkit import DocumentationError, DocumentationResult, generate_step_docs
 
 
 class StepDocumentationTests(unittest.TestCase):
-    def test_generate_step_docs_writes_mkdocs_friendly_markdown(self) -> None:
+    def test_generate_step_docs_writes_sphinx_scaffold(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            project_root = Path(tmpdir)
-            features_dir = self._write_behave_project(project_root)
-            output_dir = project_root / "docs" / "behave-toolkit"
-
-            result = generate_step_docs(
-                features_dir,
-                output_dir,
-                site_title="QA Step Catalog",
-            )
+            output_dir, result = self._generate_docs_fixture(Path(tmpdir))
 
             self.assertEqual(result.step_count, 3)
             self.assertEqual(result.type_count, 1)
             self.assertTrue((output_dir / "index.md").is_file())
+            self.assertTrue((output_dir / "conf.py").is_file())
             self.assertTrue((output_dir / "steps" / "index.md").is_file())
+            self.assertTrue((output_dir / "steps" / "given.md").is_file())
+            self.assertTrue((output_dir / "steps" / "when.md").is_file())
             self.assertTrue((output_dir / "types" / "index.md").is_file())
 
+            root_index = (output_dir / "index.md").read_text(encoding="utf-8")
+            self.assertIn("```{toctree}", root_index)
+            self.assertIn("steps/index", root_index)
+            self.assertIn("types/index", root_index)
+
             steps_index = (output_dir / "steps" / "index.md").read_text(encoding="utf-8")
-            self.assertIn("## Given", steps_index)
-            self.assertIn("## When", steps_index)
-            self.assertIn("Use a custom status parser.", steps_index)
-            self.assertIn("Open a dashboard tab count.", steps_index)
-            self.assertIn("`{status:Status}`", steps_index)
-            self.assertIn("[`Status`](../types/status.md)", steps_index)
-            self.assertIn("`int`", steps_index)
+            self.assertIn("given.md", steps_index)
+            self.assertIn("when.md", steps_index)
+            self.assertIn("then.md", steps_index)
+
+            given_index = (output_dir / "steps" / "given.md").read_text(encoding="utf-8")
+            when_index = (output_dir / "steps" / "when.md").read_text(encoding="utf-8")
+            self.assertIn("Use a custom status parser.", given_index)
+            self.assertIn("Open a dashboard tab count.", when_index)
+            self.assertIn("step_have_status_account(context, status)", given_index)
+            self.assertIn("`{status:Status}`", given_index)
+            self.assertIn("[`Status`](../types/status.md)", given_index)
+            self.assertIn("`Status`", given_index)
+            self.assertIn("step_open_tabs(context, count)", when_index)
+            self.assertIn("`{count:d}`", when_index)
+            self.assertIn("`int`", when_index)
 
             step_pages = sorted(
                 path
                 for path in (output_dir / "steps").glob("*.md")
-                if path.name != "index.md"
+                if path.name not in {"index.md", "given.md", "when.md", "then.md", "generic.md"}
             )
             self.assertEqual(len(step_pages), 3)
+
+    def test_generated_step_pages_include_signatures_and_links(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir, _ = self._generate_docs_fixture(Path(tmpdir))
+            step_pages = sorted(
+                path
+                for path in (output_dir / "steps").glob("*.md")
+                if path.name not in {"index.md", "given.md", "when.md", "then.md", "generic.md"}
+            )
 
             types_index = (output_dir / "types" / "index.md").read_text(encoding="utf-8")
             self.assertIn("[`Status`](status.md)", types_index)
@@ -58,12 +75,14 @@ class StepDocumentationTests(unittest.TestCase):
             ]
             self.assertEqual(len(matching_step_pages), 1)
             step_page = matching_step_pages[0].read_text(encoding="utf-8")
-            self.assertIn("[<- Back to step catalog](index.md)", step_page)
+            self.assertIn("[<- Back to given steps](given.md)", step_page)
             self.assertIn("## Quick reference", step_page)
+            self.assertIn("## Signature", step_page)
             self.assertIn("## Full docstring", step_page)
             self.assertIn("[`Status`](../types/status.md)", step_page)
             self.assertIn("`{status:Status}`", step_page)
             self.assertIn("Use a custom status parser.", step_page)
+            self.assertIn("step_have_status_account(context, status)", step_page)
             self.assertIn("`Given I have a active account`", step_page)
             self.assertIn("`features/demo.feature:", step_page)
 
@@ -81,7 +100,7 @@ class StepDocumentationTests(unittest.TestCase):
             step_pages = sorted(
                 path
                 for path in (output_dir / "steps").glob("*.md")
-                if path.name != "index.md"
+                if path.name not in {"index.md", "given.md", "when.md", "then.md", "generic.md"}
             )
             self.assertEqual(len(step_pages), 3)
 
@@ -92,6 +111,19 @@ class StepDocumentationTests(unittest.TestCase):
 
             with self.assertRaises(DocumentationError):
                 generate_step_docs(features_dir, Path(tmpdir) / "docs")
+
+    def _generate_docs_fixture(
+        self,
+        project_root: Path,
+    ) -> tuple[Path, DocumentationResult]:
+        features_dir = self._write_behave_project(project_root)
+        output_dir = project_root / "docs" / "behave-toolkit"
+        result = generate_step_docs(
+            features_dir,
+            output_dir,
+            site_title="QA Step Catalog",
+        )
+        return output_dir, result
 
     def _write_behave_project(self, project_root: Path) -> Path:
         features_dir = project_root / "features"
