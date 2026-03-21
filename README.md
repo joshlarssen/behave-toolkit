@@ -118,7 +118,8 @@ behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 
 The generated pages include:
 
-- one page per step definition with matcher, source file, parameters, and examples
+- a browsable step catalog with integrated docstring summaries and parameter details
+- one page per step definition with matcher, source file, parameter breakdown, and examples
 - one page per custom parse type with links back from steps to the type
 - enum values when a converter exposes an enum return annotation
 

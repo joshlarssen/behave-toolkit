@@ -26,6 +26,15 @@ class StepDocumentationTests(unittest.TestCase):
             self.assertTrue((output_dir / "steps" / "index.md").is_file())
             self.assertTrue((output_dir / "types" / "index.md").is_file())
 
+            steps_index = (output_dir / "steps" / "index.md").read_text(encoding="utf-8")
+            self.assertIn("## Given", steps_index)
+            self.assertIn("## When", steps_index)
+            self.assertIn("Use a custom status parser.", steps_index)
+            self.assertIn("Open a dashboard tab count.", steps_index)
+            self.assertIn("`{status:Status}`", steps_index)
+            self.assertIn("[`Status`](../types/status.md)", steps_index)
+            self.assertIn("`int`", steps_index)
+
             step_pages = sorted(
                 path
                 for path in (output_dir / "steps").glob("*.md")
@@ -49,7 +58,12 @@ class StepDocumentationTests(unittest.TestCase):
             ]
             self.assertEqual(len(matching_step_pages), 1)
             step_page = matching_step_pages[0].read_text(encoding="utf-8")
+            self.assertIn("[<- Back to step catalog](index.md)", step_page)
+            self.assertIn("## Quick reference", step_page)
+            self.assertIn("## Full docstring", step_page)
             self.assertIn("[`Status`](../types/status.md)", step_page)
+            self.assertIn("`{status:Status}`", step_page)
+            self.assertIn("Use a custom status parser.", step_page)
             self.assertIn("`Given I have a active account`", step_page)
             self.assertIn("`features/demo.feature:", step_page)
 

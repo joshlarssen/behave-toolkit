@@ -38,16 +38,39 @@ CARDINALITY_LABELS = {
     "*": "zero or more",
     "?": "optional",
 }
+PARSE_RUNTIME_TYPE_HINTS = {
+    "%": "float",
+    "F": "Decimal",
+    "b": "int",
+    "d": "int",
+    "e": "float",
+    "f": "float",
+    "g": "float",
+    "n": "int",
+    "o": "int",
+    "ta": "datetime",
+    "tc": "datetime",
+    "te": "datetime",
+    "tg": "datetime",
+    "th": "datetime",
+    "ti": "datetime",
+    "ts": "datetime",
+    "tt": "time",
+    "x": "int",
+}
 STEP_TYPES = ("given", "when", "then", "step")
 
 
 @dataclass(frozen=True, slots=True)
+# pylint: disable=too-many-instance-attributes
 class StepParameterDocumentation:
     name: str
+    pattern_syntax: str | None
     type_expression: str | None
     base_type_name: str | None
     cardinality: str | None
     python_type: str | None
+    runtime_type: str | None
     type_page: str | None
 
 
@@ -394,10 +417,17 @@ def _extract_parse_parameters(
         parameters.append(
             StepParameterDocumentation(
                 name=parameter_name,
+                pattern_syntax=_parse_pattern_syntax(parameter_name, type_expression),
                 type_expression=type_expression,
                 base_type_name=base_type_name,
                 cardinality=cardinality,
                 python_type=signature_types.get(parameter_name),
+                runtime_type=_resolve_runtime_type(
+                    signature_types.get(parameter_name),
+                    base_type_name,
+                    type_expression,
+                    type_docs,
+                ),
                 type_page=type_page,
             )
         )
@@ -409,10 +439,12 @@ def _extract_parse_parameters(
         parameters.append(
             StepParameterDocumentation(
                 name=parameter_name,
+                pattern_syntax=None,
                 type_expression=None,
                 base_type_name=None,
                 cardinality=None,
                 python_type=annotation,
+                runtime_type=annotation,
                 type_page=None,
             )
         )
@@ -438,10 +470,12 @@ def _extract_regex_parameters(matcher: RegexMatcher) -> list[StepParameterDocume
         parameters.append(
             StepParameterDocumentation(
                 name=parameter_name,
+                pattern_syntax=_regex_pattern_syntax(parameter_name, group_index, named_groups),
                 type_expression=None,
                 base_type_name=None,
                 cardinality=None,
                 python_type=signature_types.get(parameter_name),
+                runtime_type=signature_types.get(parameter_name),
                 type_page=None,
             )
         )
@@ -453,10 +487,12 @@ def _extract_regex_parameters(matcher: RegexMatcher) -> list[StepParameterDocume
         parameters.append(
             StepParameterDocumentation(
                 name=parameter_name,
+                pattern_syntax=None,
                 type_expression=None,
                 base_type_name=None,
                 cardinality=None,
                 python_type=annotation,
+                runtime_type=annotation,
                 type_page=None,
             )
         )
@@ -469,10 +505,12 @@ def _extract_signature_parameters(step_function: Any) -> list[StepParameterDocum
         parameters.append(
             StepParameterDocumentation(
                 name=parameter_name,
+                pattern_syntax=None,
                 type_expression=None,
                 base_type_name=None,
                 cardinality=None,
                 python_type=annotation,
+                runtime_type=annotation,
                 type_page=None,
             )
         )
@@ -534,6 +572,44 @@ def _split_type_expression(type_expression: str | None) -> tuple[str | None, str
         cardinality = CARDINALITY_LABELS[suffix]
 
     return base_type_name or None, cardinality
+
+
+def _parse_pattern_syntax(parameter_name: str, type_expression: str | None) -> str:
+    if type_expression:
+        return f"{{{parameter_name}:{type_expression}}}"
+    return f"{{{parameter_name}}}"
+
+
+def _regex_pattern_syntax(
+    parameter_name: str,
+    group_index: int,
+    named_groups: dict[int, str],
+) -> str:
+    if group_index in named_groups:
+        return f"(?P<{parameter_name}>...)"
+    return f"group {group_index}"
+
+
+def _resolve_runtime_type(
+    python_type: str | None,
+    base_type_name: str | None,
+    type_expression: str | None,
+    type_docs: dict[str, TypeDocumentation],
+) -> str | None:
+    if python_type:
+        return python_type
+
+    if base_type_name is not None:
+        type_doc = type_docs.get(base_type_name)
+        if type_doc is not None and type_doc.python_type:
+            return type_doc.python_type
+        if base_type_name in PARSE_RUNTIME_TYPE_HINTS:
+            return PARSE_RUNTIME_TYPE_HINTS[base_type_name]
+
+    if type_expression and type_expression in PARSE_RUNTIME_TYPE_HINTS:
+        return PARSE_RUNTIME_TYPE_HINTS[type_expression]
+
+    return None
 
 
 def _attach_examples(
@@ -828,41 +904,162 @@ def _render_root_index(catalog: _Catalog, site_title: str) -> str:
 
 
 def _render_steps_index(step_docs: list[StepDocumentation]) -> str:
+    grouped_steps = _group_steps_by_type(step_docs)
     lines = [
         "# Step catalog",
         "",
-        "| Step | Matcher | Parameters | Source |",
-        "| --- | --- | --- | --- |",
+        "Use this page as the main browsing view for step definitions.",
+        "Each entry embeds the docstring summary, parameter details, and real",
+        "feature-file examples so you do not need to jump back and forth.",
+        "",
+        "## Jump by keyword",
+        "",
     ]
-    for step_doc in step_docs:
-        parameter_text = _parameter_summary(step_doc.parameters)
-        source = f"`{step_doc.source_path}:{step_doc.source_line}`"
-        lines.append(
-            "| "
-            f"[{_escape_table(step_doc.title)}]({step_doc.slug}.md) | "
-            f"`{step_doc.matcher}` | "
-            f"{parameter_text} | "
-            f"{source} |"
-        )
+
+    for step_type in STEP_TYPES:
+        if grouped_steps[step_type]:
+            lines.append(
+                f"- [{_step_type_label(step_type)}](#{_slugify(_step_type_label(step_type))})"
+            )
+
+    for step_type in STEP_TYPES:
+        step_group = grouped_steps[step_type]
+        if not step_group:
+            continue
+
+        lines.extend(["", f"## {_step_type_label(step_type)}", ""])
+        for step_doc in step_group:
+            lines.extend(_render_step_catalog_entry(step_doc))
+            lines.append("")
+
     return "\n".join(lines) + "\n"
 
 
-def _parameter_summary(parameters: list[StepParameterDocumentation]) -> str:
-    if not parameters:
-        return "-"
+def _group_steps_by_type(
+    step_docs: list[StepDocumentation],
+) -> dict[str, list[StepDocumentation]]:
+    grouped_steps: dict[str, list[StepDocumentation]] = {
+        step_type: [] for step_type in STEP_TYPES
+    }
+    for step_doc in step_docs:
+        grouped_steps[step_doc.step_type].append(step_doc)
+    return grouped_steps
 
-    values: list[str] = []
+
+def _render_step_catalog_entry(step_doc: StepDocumentation) -> list[str]:
+    lines = [
+        f"### [{step_doc.title}]({step_doc.slug}.md)",
+        "",
+    ]
+
+    summary = _docstring_summary(step_doc.docstring)
+    if summary:
+        lines.extend([summary, ""])
+
+    lines.extend(
+        [
+            f"- Matcher: `{step_doc.matcher}`",
+            f"- Function: `{step_doc.function_name}()`",
+            f"- Source: `{step_doc.source_path}:{step_doc.source_line}`",
+        ]
+    )
+
+    if step_doc.parameters:
+        lines.extend(["", "**Parameters**", ""])
+        lines.extend(_render_parameter_table(step_doc.parameters))
+    else:
+        lines.extend(
+            [
+                "",
+                "**Parameters**",
+                "",
+                "This step does not accept documented parameters.",
+            ]
+        )
+
+    lines.extend(["", "**Examples**", ""])
+    if step_doc.examples:
+        for example in step_doc.examples:
+            lines.append(f"- `{example.text}` (`{example.location}`)")
+    else:
+        lines.append("No matching step examples were found in the parsed feature files.")
+
+    return lines
+
+
+def _step_type_label(step_type: str) -> str:
+    if step_type == "step":
+        return "Generic"
+    return step_type.capitalize()
+
+
+def _docstring_summary(docstring: str | None) -> str | None:
+    if not docstring:
+        return None
+
+    first_paragraph = docstring.strip().split("\n\n", maxsplit=1)[0]
+    cleaned = " ".join(line.strip() for line in first_paragraph.splitlines() if line.strip())
+    return cleaned or None
+
+
+def _render_parameter_table(parameters: list[StepParameterDocumentation]) -> list[str]:
+    lines = [
+        "| Parameter | Pattern field | Behave type | Runtime value | Step annotation | Notes |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
     for parameter in parameters:
-        if parameter.base_type_name and parameter.type_page:
-            type_text = f"[`{parameter.type_expression}`]({parameter.type_page})"
-        elif parameter.type_expression:
-            type_text = f"`{parameter.type_expression}`"
-        elif parameter.python_type:
-            type_text = f"`{parameter.python_type}`"
-        else:
-            type_text = "untyped"
-        values.append(f"`{parameter.name}`: {type_text}")
-    return "<br>".join(values)
+        lines.append(
+            "| "
+            f"`{parameter.name}` | "
+            f"{_parameter_pattern_text(parameter)} | "
+            f"{_parameter_behave_type_text(parameter)} | "
+            f"{_parameter_runtime_text(parameter)} | "
+            f"{_parameter_annotation_text(parameter)} | "
+            f"{_escape_table(_parameter_notes_text(parameter))} |"
+        )
+    return lines
+
+
+def _parameter_pattern_text(parameter: StepParameterDocumentation) -> str:
+    if parameter.pattern_syntax is None:
+        return "-"
+    return f"`{parameter.pattern_syntax}`"
+
+
+def _parameter_behave_type_text(parameter: StepParameterDocumentation) -> str:
+    if parameter.base_type_name and parameter.type_page:
+        return f"[`{parameter.base_type_name}`]({parameter.type_page})"
+    if parameter.type_expression:
+        return f"`{parameter.type_expression}`"
+    return "-"
+
+
+def _parameter_runtime_text(parameter: StepParameterDocumentation) -> str:
+    if parameter.runtime_type:
+        return f"`{parameter.runtime_type}`"
+    return "-"
+
+
+def _parameter_annotation_text(parameter: StepParameterDocumentation) -> str:
+    if parameter.python_type:
+        return f"`{parameter.python_type}`"
+    return "-"
+
+
+def _parameter_notes_text(parameter: StepParameterDocumentation) -> str:
+    notes: list[str] = []
+    if parameter.cardinality:
+        notes.append(parameter.cardinality)
+    if parameter.pattern_syntax and parameter.pattern_syntax.startswith("(?P<"):
+        notes.append("regex named capture")
+    elif parameter.pattern_syntax and parameter.pattern_syntax.startswith("group "):
+        notes.append("regex capture")
+    if parameter.type_expression and parameter.type_page is None and parameter.base_type_name:
+        if parameter.base_type_name not in PARSE_RUNTIME_TYPE_HINTS:
+            notes.append("no generated type page")
+    if not notes:
+        return "-"
+    return ", ".join(notes)
 
 
 def _render_types_index(type_docs: dict[str, TypeDocumentation]) -> str:
@@ -906,14 +1103,32 @@ def _render_step_page(step_doc: StepDocumentation) -> str:
     lines = [
         f"# {step_doc.title}",
         "",
-        f"- Matcher: `{step_doc.matcher}`",
-        f"- Function: `{step_doc.function_name}()`",
-        f"- Source: `{step_doc.source_path}:{step_doc.source_line}`",
+        "[<- Back to step catalog](index.md)",
         "",
     ]
 
+    summary = _docstring_summary(step_doc.docstring)
+    if summary:
+        lines.extend([f"> {summary}", ""])
+
+    lines.extend(
+        [
+            "## Quick reference",
+            "",
+            "| Field | Value |",
+            "| --- | --- |",
+            f"| Keyword | `{_step_type_label(step_doc.step_type)}` |",
+            f"| Matcher | `{step_doc.matcher}` |",
+            f"| Function | `{step_doc.function_name}()` |",
+            f"| Source | `{step_doc.source_path}:{step_doc.source_line}` |",
+            f"| Step pattern | `{step_doc.pattern}` |",
+            f"| Regex pattern | `{step_doc.regex_pattern}` |",
+            "",
+        ]
+    )
+
     if step_doc.docstring:
-        lines.extend(["## Summary", "", step_doc.docstring, ""])
+        lines.extend(["## Full docstring", "", step_doc.docstring, ""])
 
     lines.extend(
         [
@@ -922,46 +1137,12 @@ def _render_step_page(step_doc: StepDocumentation) -> str:
         ]
     )
     if step_doc.parameters:
-        lines.extend(
-            [
-                "| Name | Pattern type | Python type | Notes |",
-                "| --- | --- | --- | --- |",
-            ]
-        )
-        for parameter in step_doc.parameters:
-            pattern_type = "-"
-            if parameter.base_type_name and parameter.type_page:
-                pattern_type = (
-                    f"[`{parameter.type_expression}`]({parameter.type_page})"
-                )
-            elif parameter.type_expression:
-                pattern_type = f"`{parameter.type_expression}`"
-
-            python_type = f"`{parameter.python_type}`" if parameter.python_type else "-"
-
-            notes: list[str] = []
-            if parameter.cardinality:
-                notes.append(parameter.cardinality)
-            if parameter.type_expression and parameter.type_page is None:
-                notes.append("no generated type page")
-            notes_text = ", ".join(notes) if notes else "-"
-            lines.append(
-                "| "
-                f"`{parameter.name}` | "
-                f"{pattern_type} | "
-                f"{python_type} | "
-                f"{_escape_table(notes_text)} |"
-            )
+        lines.extend(_render_parameter_table(step_doc.parameters))
     else:
         lines.extend(["This step does not expose any documented parameters.", ""])
 
     lines.extend(
         [
-            "",
-            "## Matching details",
-            "",
-            f"- Step pattern: `{step_doc.pattern}`",
-            f"- Regex pattern: `{step_doc.regex_pattern}`",
             "",
             "## Examples",
             "",
