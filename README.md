@@ -153,8 +153,9 @@ python -m sphinx -W --keep-going -b html docs docs/_build/html
 A dedicated GitHub Actions workflow builds this site on pull requests and
 deploys it to GitHub Pages from `main`.
 
-The first time you enable publishing on GitHub, go to `Settings > Pages` and
-set `Build and deployment > Source` to `GitHub Actions`.
+The workflow always validates the docs build. Deployment starts automatically
+after a one-time GitHub setup in `Settings > Pages`: set
+`Build and deployment > Source` to `GitHub Actions`.
 
 ## Development
 
