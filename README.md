@@ -21,6 +21,7 @@ This repository is intentionally starting small. The current code provides:
 - object creation and cleanup for `global`, `feature`, and `scenario` scopes
 - explicit `$ref` and `$var` markers for object dependencies and reusable values
 - Sphinx-oriented step documentation generation with custom type pages
+- ranked step search from names, docstrings, parameters, and examples
 - a manager attached to the Behave context for inspection and future extensions
 
 The next milestones are expected to add:
@@ -127,6 +128,8 @@ The generated pages include:
   sections, parameter breakdown, and examples
 - one page per custom parse type with links back from steps to the type
 - enum values when a converter exposes an enum return annotation
+- a dedicated step-search page with ranked relevance over titles,
+  docstrings, parameter metadata, and feature examples
 
 To build the final HTML site, install the docs extras and run Sphinx:
 
@@ -137,6 +140,12 @@ python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 
 The generated Sphinx project is configured for the `Furo` theme,
 `sphinx-design` cards, and `MyST` Markdown parsing.
+
+For terminal usage, search the same catalog directly:
+
+```bash
+behave-toolkit-search --features-dir features "blocked account report"
+```
 
 ## Development
 
