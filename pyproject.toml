@@ -22,6 +22,9 @@ classifiers = [
   "Topic :: Software Development :: Testing",
 ]
 
+[project.scripts]
+behave-toolkit-docs = "behave_toolkit.step_docs:main"
+
 [project.optional-dependencies]
 dev = [
   "mypy>=1.10",

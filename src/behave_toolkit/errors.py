@@ -13,3 +13,7 @@ class ConfigError(ToolkitError):
 
 class IntegrationError(ToolkitError):
     """Behave context integration or scope activation failed."""
+
+
+class DocumentationError(ToolkitError):
+    """Step documentation generation failed."""

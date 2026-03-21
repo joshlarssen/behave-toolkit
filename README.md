@@ -20,12 +20,13 @@ This repository is intentionally starting small. The current code provides:
 - lifecycle activation helpers for `environment.py`
 - object creation and cleanup for `global`, `feature`, and `scenario` scopes
 - explicit `$ref` and `$var` markers for object dependencies and reusable values
+- MkDocs-friendly step documentation generation with custom type pages
 - a manager attached to the Behave context for inspection and future extensions
 
 The next milestones are expected to add:
 
-- step catalogue generation
 - optional parser/type helper integrations
+- experimental step-scoped objects
 
 ## Quick start
 
@@ -106,6 +107,24 @@ Markers are explicit on purpose:
 `install()` now validates the whole configuration up front. Invalid scopes, bad
 imports, unknown `$ref` / `$var` entries, and object-reference cycles fail fast
 with messages that include the config path and the relevant object field.
+
+## Step documentation for MkDocs Material
+
+Generate a clean Markdown catalog from a Behave project:
+
+```bash
+behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
+```
+
+The generated pages include:
+
+- one page per step definition with matcher, source file, parameters, and examples
+- one page per custom parse type with links back from steps to the type
+- enum values when a converter exposes an enum return annotation
+
+This content is intended to be rendered by an existing site tool such as
+MkDocs Material. A minimal `mkdocs.yml` can point to `docs/` and expose the
+generated `behave-toolkit/index.md` page in the nav.
 
 ## Development
 
