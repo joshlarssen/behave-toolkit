@@ -39,6 +39,11 @@ Install the package:
 pip install behave-toolkit
 ```
 
+That single install now gives you both main usage modes:
+
+- the Python integration API used from `features/environment.py`
+- the `behave-toolkit-docs` CLI plus the Sphinx toolchain needed to build HTML
+
 Create a configuration file:
 
 ```yaml
@@ -113,7 +118,8 @@ with messages that include the config path and the relevant object field.
 
 ## Step documentation for Sphinx
 
-Generate a Sphinx-ready technical reference from a Behave project:
+After a plain `pip install behave-toolkit`, generate a Sphinx-ready technical
+reference from a Behave project:
 
 ```bash
 behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
@@ -131,10 +137,11 @@ The generated pages include:
 - one page per custom parse type with links back from steps to the type
 - enum values when a converter exposes an enum return annotation
 
-To build the final HTML site, install the docs extras and run Sphinx:
+Typical consumer-project flow:
 
 ```bash
-pip install -e ".[docs]"
+pip install behave-toolkit
+behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 ```
 
@@ -146,7 +153,7 @@ The generated Sphinx project is configured for the `Furo` theme,
 Build the main project documentation locally with:
 
 ```bash
-pip install -e ".[docs]"
+pip install -e .
 python -m sphinx -W --keep-going -b html docs docs/_build/html
 ```
 

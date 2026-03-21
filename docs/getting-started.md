@@ -8,11 +8,11 @@
 pip install behave-toolkit
 ```
 
-If you also want to build step reference sites locally, install the docs extra:
+This single install gives you:
 
-```bash
-pip install -e ".[docs]"
-```
+- the runtime helpers used from `features/environment.py`
+- the `behave-toolkit-docs` CLI
+- the Sphinx dependencies needed to build generated HTML documentation
 
 ## Create a toolkit config
 

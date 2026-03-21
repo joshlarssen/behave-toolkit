@@ -6,6 +6,12 @@
 project. This is aimed at the *consumer* suite you are testing, not at the
 toolkit repository itself.
 
+After a plain `pip install behave-toolkit`, you can:
+
+1. use the Python API in `features/environment.py` for lifecycle/config wiring
+2. run `behave-toolkit-docs` to generate documentation sources
+3. run `python -m sphinx ...` to build the final HTML site
+
 ## Generate the sources
 
 ```bash
@@ -26,7 +32,14 @@ The generated output includes:
 ## Build the final HTML site
 
 ```bash
-pip install -e ".[docs]"
+python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
+```
+
+Typical end-to-end flow in a consumer project:
+
+```bash
+pip install behave-toolkit
+behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 ```
 

@@ -11,6 +11,10 @@ requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0",
   "behave>=1.3.3",
+  "Sphinx>=8.2",
+  "myst-parser>=4.0",
+  "furo>=2024.8.6",
+  "sphinx-design>=0.6",
 ]
 authors = [
   { name = "Denis" }
@@ -31,12 +35,7 @@ dev = [
   "pylint>=3.2",
   "types-PyYAML>=6.0.12.20250326",
 ]
-docs = [
-  "Sphinx>=8.2",
-  "myst-parser>=4.0",
-  "furo>=2024.8.6",
-  "sphinx-design>=0.6",
-]
+docs = []
 
 [project.urls]
 Homepage = "https://github.com/joshlarssen/behave-toolkit"
