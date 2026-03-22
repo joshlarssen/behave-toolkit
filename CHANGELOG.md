@@ -16,7 +16,6 @@
 * polish Sphinx docs navigation ([4c8f214](https://github.com/joshlarssen/behave-toolkit/commit/4c8f214707e5fb4c3e366500b950228e1dde2ca2))
 * render structured Google docstrings ([0ab1ce7](https://github.com/joshlarssen/behave-toolkit/commit/0ab1ce75b619f678afca96d5050cb0bca8b1a843))
 * switch step docs to Sphinx ([05c6acd](https://github.com/joshlarssen/behave-toolkit/commit/05c6acd374089cbb1eb12d62485ff511adc0a22a))
-)
 
 
 
