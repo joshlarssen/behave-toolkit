@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import logging
 from pathlib import Path
 from typing import Any, Mapping
 
 import yaml
 
 from .errors import ConfigError
+from .internal import normalize_logging_level
 from .scopes import Scope
 
 PARSER_TYPE_MATCHERS = frozenset({"parse", "cfparse"})
@@ -474,11 +474,12 @@ def _load_logger_spec(logger_name: str, raw_definition: Any) -> LoggerSpec:
         )
     if isinstance(level, str):
         level = level.strip()
-        candidate = getattr(logging, level.upper(), None)
-        if not isinstance(candidate, int):
+        try:
+            level = normalize_logging_level(level)
+        except ValueError as exc:
             raise ConfigError(
                 f"Logger '{logger_name}' field 'level' uses unsupported value '{level}'."
-            )
+            ) from exc
 
     return LoggerSpec(
         name=logger_name,

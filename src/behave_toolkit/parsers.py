@@ -287,6 +287,8 @@ def _clone_converter(
     if source_line is not None:
         setattr(wrapped, _SOURCE_LINE_ATTRIBUTE, source_line)
     return wrapped
+
+
 def _enum_converter_name(type_name: str) -> str:
     normalized = _ENUM_CONVERTER_NAME_PATTERN.sub("_", type_name).strip("_").lower()
     normalized = normalized or "type"

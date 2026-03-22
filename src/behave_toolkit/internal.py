@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from typing import Any
 
 from behave.matchers import get_step_matcher_factory
@@ -38,3 +39,16 @@ def callable_source_info(callable_obj: Any) -> tuple[str | None, int | None]:
     except (OSError, TypeError):
         line_number = None
     return source_file, line_number
+
+
+def normalize_logging_level(level: int | str) -> int:
+    """Normalize a logging level expressed as an int or level name."""
+
+    if isinstance(level, int):
+        return level
+
+    candidate = getattr(logging, level.upper(), None)
+    if isinstance(candidate, int):
+        return candidate
+
+    raise ValueError(f"Unsupported logging level: {level!r}")
