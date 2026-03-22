@@ -1,6 +1,8 @@
 """Public package interface for behave-toolkit."""
 
 from .config import (
+    LoggerSpec,
+    LoggingConfig,
     ObjectSpec,
     ParserConfig,
     ParserTypeSpec,
@@ -9,8 +11,9 @@ from .config import (
     load_yaml_file,
     load_yaml_text,
 )
-from .cycles import expand_scenario_cycles
+from .cycles import expand_scenario_cycles, format_cycle_progress, get_cycle_progress
 from .errors import ConfigError, DocumentationError, IntegrationError, ToolkitError
+from .logging_support import configure_test_logging
 from .parsers import configure_parsers
 from .plugin import (
     LifecycleManager,
@@ -18,6 +21,7 @@ from .plugin import (
     activate_global_scope,
     activate_scenario_scope,
     activate_scope,
+    configure_loggers,
     install,
 )
 from .scopes import Scope
@@ -25,11 +29,17 @@ from .step_docs import DocumentationResult, generate_step_docs
 
 __all__ = [
     "ConfigError",
+    "configure_loggers",
+    "configure_test_logging",
     "DocumentationError",
     "DocumentationResult",
     "expand_scenario_cycles",
+    "format_cycle_progress",
+    "get_cycle_progress",
     "IntegrationError",
     "LifecycleManager",
+    "LoggerSpec",
+    "LoggingConfig",
     "ObjectSpec",
     "ParserConfig",
     "ParserTypeSpec",

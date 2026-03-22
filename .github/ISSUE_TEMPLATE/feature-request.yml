@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest a new capability or improvement for behave-toolkit.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What pain point are you trying to solve?
+      placeholder: In a large Behave suite, it is hard to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like behave-toolkit to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example usage
+      description: Show how this could look in YAML, hooks, or step code.
+      placeholder: |
+        objects:
+          ...
+
+        def before_all(context):
+            ...
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workaround or alternative you considered.

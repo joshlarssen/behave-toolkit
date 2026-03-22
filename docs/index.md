@@ -1,9 +1,16 @@
 # behave-toolkit
 
-`behave-toolkit` helps large `behave` suites stay explicit, easier to wire,
-and easier to understand. The project currently focuses on configuration-driven
-object lifecycles, import-time parser helpers, explicit scope activation, strong
-diagnostics, and generated step reference documentation.
+`behave-toolkit` helps large `behave` suites stay explicit, easier to wire, and
+easier to understand.
+
+Start with the small core:
+
+- configure shared objects in YAML
+- call `install()` from `before_all()`
+- activate `feature` and `scenario` scopes from the matching Behave hooks
+
+Then add optional layers only when you need them: parser helpers, scenario
+cycling, generated step docs, or YAML-defined named loggers.
 
 ```{toctree}
 :hidden:
@@ -89,14 +96,27 @@ As a Behave suite grows, three things usually start to hurt:
 `behave-toolkit` is meant to reduce that pressure without hiding Behave's
 execution model behind a heavy framework.
 
+## Recommended reading order
+
+1. [Getting started](getting-started.md) for the smallest working integration.
+2. [Configuration model](configuration.md) for `objects`, `variables`, `$ref`,
+   and `$var`.
+3. [Lifecycle hooks](lifecycle.md) for the exact Behave hook mapping.
+4. Add [Parser helpers](parser-helpers.md), [Scenario cycling](scenario-cycling.md),
+   or [Step documentation](step-documentation.md) only when those problems
+   become real in your suite.
+
 ## What is stable today
 
+- file- or directory-based config loading with deterministic YAML merging
 - `global`, `feature`, and `scenario` scoped object activation
 - YAML-defined factories resolved from your own code, installed packages, or
   the standard library
 - config-driven parser helpers with matcher selection and enum shortcuts
 - tag-driven scenario cycling with `@cycling(N)`
 - explicit object references with `$ref` and reusable values with `$var`
+- a small persistent test logger with `configure_test_logging()`, plus optional
+  YAML-configured named loggers for larger suites
 - fail-fast `ConfigError` and `IntegrationError` messages
 - Sphinx-ready step documentation with custom type pages, enum values, feature
   examples, and structured Google-style docstrings

@@ -18,10 +18,29 @@ The current release only supports these three runtime scopes.
 | --- | --- | --- |
 | `expand_scenario_cycles(context)` | `before_all` | Expand tagged plain scenarios that use `@cycling(N)` before any feature runs. |
 | `install(context, config_path, ...)` | `before_all` | Load the config, validate it, attach the manager, and optionally activate global objects. |
+| `configure_test_logging(log_path, ...)` | usually `before_all` | Configure one dedicated test-run logger writing to a chosen file, with optional console output. |
+| `configure_loggers(context, ...)` | usually `before_all` | Materialize loggers from the optional YAML `logging:` section. |
 | `activate_global_scope(context, ...)` | `before_all` | Explicitly activate global objects when you disable `activate_global`. |
 | `activate_feature_scope(context, ...)` | `before_feature` | Create and expose feature-scoped objects. |
 | `activate_scenario_scope(context, ...)` | `before_scenario` | Create and expose scenario-scoped objects. |
 | `activate_scope(context, scope, ...)` | advanced usage | Generic scope activation wrapper. |
+
+`activate_scope(context, Scope.FEATURE)` and friends all route through the same
+generic activation logic. The dedicated helpers are just the friendlier,
+hook-specific wrappers.
+
+## Global scope behavior
+
+`global` is the run-wide scope:
+
+- with the default flow, `install(context, ...)` activates it from `before_all()`
+- with the explicit flow, call `install(..., activate_global=False)` and then
+  `activate_global_scope(context)` from `before_all()`
+- cleanup runs automatically when Behave closes the test-run layer at the very
+  end of the suite
+
+That makes `global` a good fit for shared clients, suite-wide temp locations,
+or other resources that should be created once and destroyed once.
 
 ## Cleanup model
 
@@ -40,10 +59,22 @@ include:
 | Method | Purpose |
 | --- | --- |
 | `context.toolkit.list_objects()` | List configured object names. |
+| `context.toolkit.list_loggers()` | List configured logger names. |
 | `context.toolkit.spec(name)` | Inspect the normalized spec for one object. |
 | `context.toolkit.instance(name)` | Fetch an already-active object instance. |
+| `context.toolkit.logger(name)` | Fetch an active configured logger. |
 | `context.toolkit.objects_for_scope(scope)` | List the specs assigned to a scope. |
 | `context.toolkit.active_objects(scope)` | Inspect currently active instances by scope. |
+
+For logger setup, the recommended default is the smaller
+`configure_test_logging(log_path)` helper when you just want one persistent
+`test-run.log`-style file. Use `configure_loggers(context)` only when you want
+multiple named loggers defined in YAML.
+
+When you do use `configure_loggers(context)`, call it after global objects are
+active. With the default `install(context, config_path)` that means “right
+after install”; if you opt into `activate_global=False`, call
+`activate_global_scope(context)` first.
 
 ## Integration failures
 

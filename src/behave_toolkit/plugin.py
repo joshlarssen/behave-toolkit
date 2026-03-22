@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 import pkgutil
 from typing import Any, Callable, Protocol, cast
 
-from .config import ObjectSpec, ToolkitConfig, load_yaml_file
+from .config import LoggerSpec, ObjectSpec, ToolkitConfig, load_yaml_file
 from .errors import ConfigError, IntegrationError
+from .logging_support import configure_test_logging
 from .scopes import Scope
 
 CleanupCallback = Callable[[], None]
 FactoryCallable = Callable[..., Any]
+ConfigOwner = ObjectSpec | LoggerSpec
 
 
 class SupportsCleanup(Protocol):
@@ -68,7 +71,6 @@ def _scope_rank(scope: Scope) -> int:
         Scope.GLOBAL: 0,
         Scope.FEATURE: 1,
         Scope.SCENARIO: 2,
-        Scope.STEP: 3,
     }
     return order[scope]
 
@@ -78,7 +80,6 @@ def _scope_helper_name(scope: Scope) -> str:
         Scope.GLOBAL: "activate_global_scope",
         Scope.FEATURE: "activate_feature_scope",
         Scope.SCENARIO: "activate_scenario_scope",
-        Scope.STEP: "activate_scope",
     }
     return helpers[scope]
 
@@ -88,9 +89,13 @@ def _scope_hook_name(scope: Scope) -> str:
         Scope.GLOBAL: "before_all",
         Scope.FEATURE: "before_feature",
         Scope.SCENARIO: "before_scenario",
-        Scope.STEP: "before_step",
     }
     return hooks[scope]
+
+
+def _owner_label(spec: ConfigOwner) -> str:
+    owner_type = "Object" if isinstance(spec, ObjectSpec) else "Logger"
+    return f"{owner_type} '{spec.name}'"
 
 
 @dataclass(slots=True)
@@ -101,30 +106,63 @@ class LifecycleManager:
     config: ToolkitConfig
     namespace: str = "toolkit"
     _instances: dict[Scope, dict[str, Any]] = field(default_factory=_make_instance_store)
+    _loggers: dict[str, logging.Logger] = field(default_factory=dict)
 
     def validate(self) -> None:
         aliases_by_scope: dict[Scope, set[str]] = {scope: set() for scope in Scope}
-        for spec in self.config.objects.values():
-            if spec.context_name == self.namespace:
+        for object_spec in self.config.objects.values():
+            if object_spec.context_name == self.namespace:
                 raise self._config_error(
-                    f"Object '{spec.name}' cannot use context name "
+                    f"Object '{object_spec.name}' cannot use context name "
                     f"'{self.namespace}' because it is reserved for the toolkit "
                     "manager."
                 )
 
-            aliases = aliases_by_scope[spec.scope]
-            if spec.context_name in aliases:
+            aliases = aliases_by_scope[object_spec.scope]
+            if object_spec.context_name in aliases:
                 raise self._config_error(
-                    f"Scope '{spec.scope.value}' defines context name "
-                    f"'{spec.context_name}' more than once."
+                    f"Scope '{object_spec.scope.value}' defines context name "
+                    f"'{object_spec.context_name}' more than once."
                 )
-            aliases.add(spec.context_name)
+            aliases.add(object_spec.context_name)
+
+        logger_context_names: set[str] = set()
+        logger_target_names: set[str] = set()
+        object_context_names = {spec.context_name for spec in self.config.objects.values()}
+        for logger_spec in self.config.logging.loggers.values():
+            if logger_spec.context_name == self.namespace:
+                raise self._config_error(
+                    f"Logger '{logger_spec.name}' cannot use context name "
+                    f"'{self.namespace}' because it is reserved for the toolkit "
+                    "manager."
+                )
+            if logger_spec.context_name in object_context_names:
+                raise self._config_error(
+                    f"Logger '{logger_spec.name}' cannot use context name "
+                    f"'{logger_spec.context_name}' because that name is already used by "
+                    "a configured object."
+                )
+            if logger_spec.context_name in logger_context_names:
+                raise self._config_error(
+                    f"Logging config defines context name '{logger_spec.context_name}' "
+                    "more than once."
+                )
+            logger_context_names.add(logger_spec.context_name)
+
+            if logger_spec.effective_logger_name in logger_target_names:
+                raise self._config_error(
+                    f"Logging config defines logger name "
+                    f"'{logger_spec.effective_logger_name}' more than once."
+                )
+            logger_target_names.add(logger_spec.effective_logger_name)
 
         validation_state = _ValidationState()
-        for spec in self.config.objects.values():
-            self._resolve_factory(spec)
-        for spec in self.config.objects.values():
-            self._validate_object_spec(spec, validation_state)
+        for object_spec in self.config.objects.values():
+            self._resolve_factory(object_spec)
+        for object_spec in self.config.objects.values():
+            self._validate_object_spec(object_spec, validation_state)
+        for logger_spec in self.config.logging.loggers.values():
+            self._validate_logger_spec(logger_spec, validation_state)
 
     def _config_error(self, message: str) -> ConfigError:
         return ConfigError(
@@ -137,6 +175,9 @@ class LifecycleManager:
     def list_objects(self) -> list[str]:
         return sorted(self.config.objects)
 
+    def list_loggers(self) -> list[str]:
+        return sorted(self.config.logging.loggers)
+
     def objects_for_scope(self, scope: Scope | str) -> list[ObjectSpec]:
         parsed_scope = Scope.parse(scope)
         return [spec for spec in self.config.objects.values() if spec.scope == parsed_scope]
@@ -146,7 +187,7 @@ class LifecycleManager:
         return dict(self._instances[parsed_scope])
 
     def instance(self, name: str) -> Any:
-        for scope in (Scope.STEP, Scope.SCENARIO, Scope.FEATURE, Scope.GLOBAL):
+        for scope in (Scope.SCENARIO, Scope.FEATURE, Scope.GLOBAL):
             instances = self._instances[scope]
             if name in instances:
                 return instances[name]
@@ -154,13 +195,17 @@ class LifecycleManager:
         known = ", ".join(self.list_objects()) or "<none>"
         raise KeyError(f"Object '{name}' is not active. Known configured objects: {known}")
 
+    def logger(self, name: str) -> logging.Logger:
+        try:
+            return self._loggers[name]
+        except KeyError as exc:
+            known = ", ".join(self.list_loggers()) or "<none>"
+            raise KeyError(
+                f"Logger '{name}' is not configured. Known configured loggers: {known}"
+            ) from exc
+
     def activate_scope(self, context: object, scope: Scope | str) -> dict[str, Any]:
         parsed_scope = Scope.parse(scope)
-        if parsed_scope is Scope.STEP:
-            raise NotImplementedError(
-                "Step scope is not implemented yet. It is planned as a later extension."
-            )
-
         if self._instances[parsed_scope]:
             raise IntegrationError(
                 f"Scope '{parsed_scope.value}' is already active. Call "
@@ -215,6 +260,45 @@ class LifecycleManager:
 
     def activate_scenario_scope(self, context: object) -> dict[str, Any]:
         return self.activate_scope(context, Scope.SCENARIO)
+
+    def configure_loggers(self, context: object) -> dict[str, logging.Logger]:
+        if self._loggers:
+            raise IntegrationError(
+                "Logging is already configured. Call configure_loggers(context) "
+                "once from before_all()."
+            )
+
+        cleanup_context = _require_cleanup_context(context)
+        created: list[tuple[LoggerSpec, logging.Logger, CleanupCallback]] = []
+        try:
+            for spec in self.config.logging.loggers.values():
+                current_value = getattr(context, spec.context_name, None)
+                if current_value is not None:
+                    raise IntegrationError(
+                        f"Could not configure logger '{spec.name}' from "
+                        f"behave-toolkit config '{self.config_path}': the context "
+                        f"already defines '{spec.context_name}'."
+                    )
+
+                resolved_path = self._resolve_logger_value(spec.path, spec, "path")
+                logger = configure_test_logging(
+                    resolved_path,
+                    logger_name=spec.effective_logger_name,
+                    level=spec.level,
+                    console=spec.console,
+                    mode=spec.mode,
+                )
+                cleanup = self._build_logger_cleanup(context, spec, logger)
+                self._loggers[spec.name] = logger
+                setattr(context, spec.context_name, logger)
+                cleanup_context.add_cleanup(cleanup, layer=Scope.GLOBAL.context_layer())
+                created.append((spec, logger, cleanup))
+
+            return {spec.name: logger for spec, logger, _ in created}
+        except Exception:
+            for _, _, cleanup in reversed(created):
+                cleanup()
+            raise
 
     def _ensure_current_scope_object(self, state: _ActivationState, name: str) -> Any:
         if name in state.created_instances:
@@ -389,6 +473,137 @@ class LifecycleManager:
                 ) from exc
         return current
 
+    def _resolve_logger_value(
+        self,
+        value: Any,
+        spec: LoggerSpec,
+        location: str,
+        variable_stack: list[str] | None = None,
+    ) -> Any:
+        active_variable_stack = variable_stack if variable_stack is not None else []
+        if isinstance(value, tuple):
+            return tuple(
+                self._resolve_logger_value(
+                    item,
+                    spec,
+                    f"{location}[{index}]",
+                    active_variable_stack,
+                )
+                for index, item in enumerate(value)
+            )
+        if isinstance(value, list):
+            return [
+                self._resolve_logger_value(
+                    item,
+                    spec,
+                    f"{location}[{index}]",
+                    active_variable_stack,
+                )
+                for index, item in enumerate(value)
+            ]
+        if isinstance(value, dict):
+            if "$ref" in value:
+                return self._resolve_active_reference_marker(value, spec, location)
+            if "$var" in value:
+                return self._resolve_logger_variable_marker(
+                    value,
+                    spec,
+                    location,
+                    active_variable_stack,
+                )
+            return {
+                key: self._resolve_logger_value(
+                    item,
+                    spec,
+                    f"{location}.{key}" if isinstance(key, str) else f"{location}[{key!r}]",
+                    active_variable_stack,
+                )
+                for key, item in value.items()
+            }
+        return value
+
+    def _resolve_active_reference_marker(
+        self,
+        marker: dict[str, Any],
+        spec: LoggerSpec,
+        location: str,
+    ) -> Any:
+        extra_keys = set(marker) - {"$ref", "attr"}
+        if extra_keys:
+            extras = ", ".join(sorted(extra_keys))
+            raise self._config_error(
+                f"{_owner_label(spec)} field '{location}' uses unsupported $ref "
+                f"keys: {extras}."
+            )
+
+        ref_name = marker.get("$ref")
+        if not isinstance(ref_name, str) or not ref_name.strip():
+            raise self._config_error(
+                f"{_owner_label(spec)} field '{location}' requires a non-empty "
+                "string in '$ref'."
+            )
+        ref_name = ref_name.strip()
+
+        dependency_spec = self._require_known_object(spec, ref_name, location)
+        active_instances = self._instances[dependency_spec.scope]
+        if ref_name not in active_instances:
+            raise IntegrationError(
+                f"{_owner_label(spec)} field '{location}' depends on '{ref_name}', "
+                f"but scope '{dependency_spec.scope.value}' is not active. Call "
+                f"{_scope_helper_name(dependency_spec.scope)}(context) from "
+                f"{_scope_hook_name(dependency_spec.scope)} first."
+            )
+
+        target = active_instances[ref_name]
+        attr_path = marker.get("attr")
+        if attr_path is None:
+            return target
+        if not isinstance(attr_path, str) or not attr_path.strip():
+            raise self._config_error(
+                f"{_owner_label(spec)} field '{location}.attr' must be a non-empty "
+                "string."
+            )
+        return self._resolve_attribute_path(target, ref_name, attr_path)
+
+    def _resolve_logger_variable_marker(
+        self,
+        marker: dict[str, Any],
+        spec: LoggerSpec,
+        location: str,
+        variable_stack: list[str],
+    ) -> Any:
+        extra_keys = set(marker) - {"$var"}
+        if extra_keys:
+            extras = ", ".join(sorted(extra_keys))
+            raise self._config_error(
+                f"{_owner_label(spec)} field '{location}' uses unsupported $var "
+                f"keys: {extras}."
+            )
+
+        variable_name = marker.get("$var")
+        if not isinstance(variable_name, str) or not variable_name.strip():
+            raise self._config_error(
+                f"{_owner_label(spec)} field '{location}' requires a non-empty "
+                "string in '$var'."
+            )
+        variable_name = variable_name.strip()
+
+        if variable_name in variable_stack:
+            cycle = " -> ".join([*variable_stack, variable_name])
+            raise self._config_error(f"Circular variable reference detected: {cycle}")
+
+        raw_value = self._require_known_variable(spec, variable_name, location)
+        variable_stack.append(variable_name)
+        try:
+            return self._resolve_logger_value(
+                raw_value,
+                spec,
+                f"variables.{variable_name}",
+                variable_stack,
+            )
+        finally:
+            variable_stack.pop()
+
     def _build_cleanup_callback(
         self,
         context: object,
@@ -417,6 +632,34 @@ class LifecycleManager:
 
                 if current_value is instance:
                     delattr(context, spec.context_name)
+
+        return cleanup
+
+    def _build_logger_cleanup(
+        self,
+        context: object,
+        spec: LoggerSpec,
+        logger: logging.Logger,
+    ) -> CleanupCallback:
+        finished = False
+
+        def cleanup() -> None:
+            nonlocal finished
+            if finished:
+                return
+
+            finished = True
+            for handler in list(logger.handlers):
+                logger.removeHandler(handler)
+                handler.close()
+            self._loggers.pop(spec.name, None)
+            try:
+                current_value = getattr(context, spec.context_name)
+            except AttributeError:
+                current_value = None
+
+            if current_value is logger:
+                delattr(context, spec.context_name)
 
         return cleanup
 
@@ -480,10 +723,17 @@ class LifecycleManager:
 
         state.validated_objects.add(spec.name)
 
+    def _validate_logger_spec(
+        self,
+        spec: LoggerSpec,
+        state: _ValidationState,
+    ) -> None:
+        self._validate_value(spec.path, spec, "path", state)
+
     def _validate_value(
         self,
         value: Any,
-        spec: ObjectSpec,
+        spec: ConfigOwner,
         location: str,
         state: _ValidationState,
     ) -> None:
@@ -516,7 +766,7 @@ class LifecycleManager:
     def _validate_reference_marker(
         self,
         marker: dict[str, Any],
-        spec: ObjectSpec,
+        spec: ConfigOwner,
         location: str,
         state: _ValidationState,
     ) -> None:
@@ -524,14 +774,14 @@ class LifecycleManager:
         if extra_keys:
             extras = ", ".join(sorted(extra_keys))
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' uses unsupported "
-                f"$ref keys: {extras}."
+                f"{_owner_label(spec)} field '{location}' uses unsupported $ref "
+                f"keys: {extras}."
             )
 
         ref_name = marker.get("$ref")
         if not isinstance(ref_name, str) or not ref_name.strip():
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' requires a non-empty "
+                f"{_owner_label(spec)} field '{location}' requires a non-empty "
                 "string in '$ref'."
             )
         ref_name = ref_name.strip()
@@ -540,19 +790,19 @@ class LifecycleManager:
         if attr_path is not None:
             if not isinstance(attr_path, str) or not attr_path.strip():
                 raise self._config_error(
-                    f"Object '{spec.name}' field '{location}.attr' must be a "
+                    f"{_owner_label(spec)} field '{location}.attr' must be a "
                     "non-empty string."
                 )
             if any(not part for part in attr_path.split(".")):
                 raise self._config_error(
-                    f"Object '{spec.name}' field '{location}.attr' must not "
+                    f"{_owner_label(spec)} field '{location}.attr' must not "
                     "contain empty path segments."
                 )
 
         dependency_spec = self._require_known_object(spec, ref_name, location)
         if _scope_rank(dependency_spec.scope) > _scope_rank(spec.scope):
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' cannot reference "
+                f"{_owner_label(spec)} field '{location}' cannot reference "
                 f"'{ref_name}' in narrower scope '{dependency_spec.scope.value}'."
             )
 
@@ -565,7 +815,7 @@ class LifecycleManager:
     def _validate_variable_marker(
         self,
         marker: dict[str, Any],
-        spec: ObjectSpec,
+        spec: ConfigOwner,
         location: str,
         state: _ValidationState,
     ) -> None:
@@ -573,14 +823,14 @@ class LifecycleManager:
         if extra_keys:
             extras = ", ".join(sorted(extra_keys))
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' uses unsupported "
-                f"$var keys: {extras}."
+                f"{_owner_label(spec)} field '{location}' uses unsupported $var "
+                f"keys: {extras}."
             )
 
         variable_name = marker.get("$var")
         if not isinstance(variable_name, str) or not variable_name.strip():
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' requires a non-empty "
+                f"{_owner_label(spec)} field '{location}' requires a non-empty "
                 "string in '$var'."
             )
         variable_name = variable_name.strip()
@@ -598,7 +848,7 @@ class LifecycleManager:
 
     def _require_known_object(
         self,
-        spec: ObjectSpec,
+        spec: ConfigOwner,
         name: str,
         location: str,
     ) -> ObjectSpec:
@@ -607,13 +857,13 @@ class LifecycleManager:
         except KeyError as exc:
             known = ", ".join(self.list_objects()) or "<none>"
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' references unknown "
+                f"{_owner_label(spec)} field '{location}' references unknown "
                 f"object '{name}'. Known objects: {known}."
             ) from exc
 
     def _require_known_variable(
         self,
-        spec: ObjectSpec,
+        spec: ConfigOwner,
         name: str,
         location: str,
     ) -> Any:
@@ -622,7 +872,7 @@ class LifecycleManager:
         except KeyError as exc:
             known = ", ".join(sorted(self.config.variables)) or "<none>"
             raise self._config_error(
-                f"Object '{spec.name}' field '{location}' references unknown "
+                f"{_owner_label(spec)} field '{location}' references unknown "
                 f"variable '{name}'. Known variables: {known}."
             ) from exc
 
@@ -680,6 +930,18 @@ def activate_scenario_scope(
     namespace: str = "toolkit",
 ) -> dict[str, Any]:
     return activate_scope(context, Scope.SCENARIO, namespace=namespace)
+
+
+def configure_loggers(
+    context: object,
+    *,
+    namespace: str = "toolkit",
+) -> dict[str, logging.Logger]:
+    return _require_manager(
+        context,
+        namespace,
+        caller="configure_loggers",
+    ).configure_loggers(context)
 
 
 def install(

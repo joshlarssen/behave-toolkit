@@ -11,7 +11,12 @@ from behave.model import Feature
 from behave.parser import parse_file
 from behave.runner import Context, Runner
 
-from behave_toolkit import IntegrationError, expand_scenario_cycles
+from behave_toolkit import (
+    IntegrationError,
+    expand_scenario_cycles,
+    format_cycle_progress,
+    get_cycle_progress,
+)
 
 
 class ScenarioCycleTests(unittest.TestCase):
@@ -55,6 +60,12 @@ class ScenarioCycleTests(unittest.TestCase):
             self.assertIs(clone.feature, feature)
             self.assertIsNot(clone.steps[0], original.steps[0])
             self.assertEqual(clone.steps[0].name, original.steps[0].name)
+            self.assertEqual(get_cycle_progress(original), (1, 3))
+            self.assertEqual(format_cycle_progress(original), "1/3")
+            self.assertEqual(get_cycle_progress(clone), (2, 3))
+
+            context.scenario = clone
+            self.assertEqual(format_cycle_progress(context), "2/3")
 
     def test_expand_scenario_cycles_supports_scenarios_inside_rules(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

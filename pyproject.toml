@@ -1,13 +1,15 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "behave-toolkit"
 version = "0.1.0"
-description = "Toolkit helpers for Behave projects."
+description = "Toolkit helpers for Behave test suites."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
   "PyYAML>=6.0",
   "behave>=1.3.3",
@@ -21,8 +23,10 @@ authors = [
 ]
 keywords = ["behave", "bdd", "testing", "qa", "yaml"]
 classifiers = [
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Testing",
 ]
 
@@ -39,8 +43,10 @@ docs = []
 
 [project.urls]
 Homepage = "https://github.com/joshlarssen/behave-toolkit"
+Repository = "https://github.com/joshlarssen/behave-toolkit"
 Issues = "https://github.com/joshlarssen/behave-toolkit/issues"
 Documentation = "https://joshlarssen.github.io/behave-toolkit/"
+Changelog = "https://github.com/joshlarssen/behave-toolkit/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -102,6 +102,28 @@ class PluginInstallationTests(unittest.TestCase):
         self.assertIn("demo.browser.Factory", message)
         self.assertIn("importable", message)
 
+    def test_install_accepts_config_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / "behave-toolkit"
+            config_dir.mkdir()
+            (config_dir / "10-objects.yaml").write_text(
+                """
+                objects:
+                  browser:
+                    factory: pathlib.Path
+                    scope: feature
+                    args:
+                      - .
+                """,
+                encoding="utf-8",
+            )
+
+            context = SimpleNamespace()
+            manager = install(context, config_dir)
+
+        self.assertIs(context.toolkit, manager)
+        self.assertEqual(manager.list_objects(), ["browser"])
+
 
 if __name__ == "__main__":
     unittest.main()

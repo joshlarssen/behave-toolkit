@@ -1,34 +1,28 @@
 # behave-toolkit
 
-`behave-toolkit` is an opinionated toolkit for making large `behave` suites
- easier to configure, understand, and evolve.
+`behave-toolkit` is a small toolkit for teams that like Behave's explicit
+execution model but want less repetitive wiring as suites grow.
 
-The first bootstrap version focuses on a clean project foundation:
+The project is deliberately pragmatic:
 
-- declarative YAML configuration for named objects
-- explicit lifecycle scopes (`scenario`, `feature`, `global`)
-- a small installation API for `features/environment.py`
-- a package layout that leaves room for focused extensions like parser helpers and scenario cycling
+- keep `features/environment.py` readable
+- make object lifetimes explicit with `global`, `feature`, and `scenario`
+  scopes
+- move repetitive setup into explicit YAML instead of hidden framework magic
+- add a few focused helpers only where Behave gets noisy in larger suites
 
-## Status
+## What it gives you today
 
-This repository is intentionally starting small. The current code provides:
-
-- configuration loading and validation
-- fail-fast diagnostics with dedicated `ConfigError` and `IntegrationError` exceptions
-- scope normalization
+- YAML-configured objects with deterministic file or directory loading
+- fail-fast validation with dedicated `ConfigError` and `IntegrationError`
+  exceptions
+- explicit `$ref` and `$var` markers for dependencies and reusable values
+- lifecycle activation helpers for `environment.py`
 - config-driven parser helpers for Behave custom types
 - tag-driven scenario cycling with `@cycling(N)`
-- lifecycle activation helpers for `environment.py`
-- object creation and cleanup for `global`, `feature`, and `scenario` scopes
-- explicit `$ref` and `$var` markers for object dependencies and reusable values
-- Sphinx-oriented step documentation generation with custom type pages
-- a manager attached to the Behave context for inspection and future extensions
-
-Possible follow-up ideas still under evaluation include:
-
-- step search / discovery helpers
-- other low-boilerplate helpers that keep Behave explicit
+- generated step reference documentation for consumer Behave suites
+- one small persistent test logger helper, plus optional YAML-defined named
+  loggers if you later need more than one output
 
 Project documentation for `behave-toolkit` itself lives in `docs/` and is meant
 to be published on GitHub Pages.
@@ -82,17 +76,13 @@ from pathlib import Path
 from behave_toolkit import (
     activate_feature_scope,
     activate_scenario_scope,
-    configure_parsers,
-    expand_scenario_cycles,
     install,
 )
 
 CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
-configure_parsers(CONFIG_PATH)
 
 
 def before_all(context):
-    expand_scenario_cycles(context)
     install(context, CONFIG_PATH)
 
 
@@ -106,9 +96,16 @@ def before_scenario(context, scenario):
     activate_scenario_scope(context)
 ```
 
-Global objects are created during `install()`. Feature and scenario objects are
-created by the matching hook helpers. Instances are exposed on the Behave
-context using either `inject_as` or the object name.
+For many suites, that is enough. `install()` creates `global` objects during
+`before_all()`, `activate_feature_scope()` creates feature objects,
+`activate_scenario_scope()` creates scenario objects, and instances are exposed
+on the Behave context using either `inject_as` or the object name.
+
+That means the default `global` lifecycle is:
+
+- created from `before_all()` when you call `install(context, CONFIG_PATH)`
+- kept alive for the whole Behave run
+- cleaned automatically when Behave tears down the test-run layer at the very end
 
 `factory` can point to:
 
@@ -122,104 +119,71 @@ Markers are explicit on purpose:
 - `$ref` + `attr`: inject one attribute path from another object
 - `$var`: inject a named value from the root `variables` section
 
-`install()` now validates the whole configuration up front. Invalid scopes, bad
+`install()` validates the whole configuration up front. Invalid scopes, bad
 imports, unknown `$ref` / `$var` entries, and object-reference cycles fail fast
 with messages that include the config path and the relevant object field.
 
-## Parser helpers
+When the config grows, `CONFIG_PATH` can point to a dedicated config directory
+instead of one file. `behave-toolkit` loads all `.yaml` / `.yml` files from that
+directory recursively in deterministic order and merges them. Duplicated names
+across files fail fast so ownership stays explicit.
 
-Parser setup in Behave normally lives as imperative glue in `environment.py`:
-`use_step_matcher(...)`, `register_type(...)`, plus `@parse.with_pattern(...)`
-decorators for each converter.
+Example layout:
 
-`behave-toolkit` can move that into the same YAML config:
-
-```yaml
-version: 1
-parsers:
-  step_matcher: cfparse
-  types:
-    Status:
-      enum: support_types.Status
-      case_sensitive: false
-
-    Priority:
-      converter: support_types.parse_priority
-      pattern: low|high
+```text
+features/
+  behave-toolkit/
+    00-variables.yaml
+    10-parsers.yaml
+    20-objects.yaml
+    30-logging.yaml
 ```
 
-Then the same `configure_parsers(CONFIG_PATH)` call in `environment.py`:
+## Add optional helpers only when you need them
 
-- sets the default Behave step matcher
-- registers the configured custom types
-- auto-builds enum converters when you use `enum: ...`
-- keeps generated step docs aligned, because the helper runs while
-  `environment.py` is imported
+### Parser helpers
 
-This is intentionally import-time setup. It must happen before Behave loads step
-modules, which is why `configure_parsers(CONFIG_PATH)` lives at module level and
-not inside `before_all()`.
+If your suite uses custom Behave types, `configure_parsers(CONFIG_PATH)` can
+move matcher selection and type registration into the same YAML config. This is
+import-time setup, so keep it at module level in `environment.py`.
 
-## Scenario cycling
+### Scenario cycling
 
-For a plain `Scenario`, add a tag like:
+If you want to replay one plain scenario several times, call
+`expand_scenario_cycles(context)` from `before_all()` and tag the scenario with
+`@cycling(N)`. Each replay keeps its own scenario hooks, context layer, and
+report entry.
 
-```gherkin
-@cycling(3)
-Scenario: Billing burst
-  Given the toolkit global session is ready
-  When I submit 3 requests to billing
-  Then the request summary is stored
+### Logging
+
+If your config exposes a path object such as `test_log_path`, the recommended
+default is one persistent test log:
+
+```python
+from behave_toolkit import configure_test_logging
+
+
+def before_all(context):
+    install(context, CONFIG_PATH)
+    context.test_logger = configure_test_logging(context.test_log_path)
 ```
 
-Then call `expand_scenario_cycles(context)` once from `before_all()`:
+If that one file is enough, stop there. If you later need several named outputs,
+the optional `logging:` section plus `configure_loggers(context)` can
+materialize them from YAML.
 
-- it expands the tagged scenario into repeated runs before feature execution starts
-- it is a no-op when no scenario uses `@cycling(...)`
-- each cycle gets its own scenario lifecycle and its own report entry
+### Step documentation
 
-This is intentionally separate from `Scenario Outline`:
-
-- `@cycling(N)` is for replaying the same plain scenario multiple times
-- `Scenario Outline` remains the right tool for data-driven example tables
-
-The repeated cycles appear as separate scenarios in Behave output, with names
-like `Billing burst [cycle 2/3]` so failures stay attributable to one replay.
-
-## Step documentation for Sphinx
-
-After a plain `pip install behave-toolkit`, generate a Sphinx-ready technical
-reference from a Behave project:
+To generate a technical reference site from a consumer Behave project:
 
 ```bash
-behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
-```
-
-The generated pages include:
-
-- a Sphinx/MyST project scaffold with `conf.py`, sidebar navigation,
-  and grouped step reference pages
-- a browsable step catalog grouped by keyword, with integrated
-  docstring summaries and parameter details
-- one page per step definition with signature, full implementation
-  docstring, structured Google-style `Args` / `Returns` / `Raises`
-  sections, parameter breakdown, and examples
-- one page per custom parse type with links back from steps to the type
-- enum values when a converter exposes an enum return annotation
-
-Typical consumer-project flow:
-
-```bash
-pip install behave-toolkit
 behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 ```
 
-The generated Sphinx project is configured for the `Furo` theme,
-`sphinx-design` cards, and `MyST` Markdown parsing.
-
-If you use `configure_parsers(CONFIG_PATH)` in `environment.py`, the generator
-will see the same configured types and matcher defaults as your Behave suite.
+The generated pages include grouped step catalogs, one page per step
+definition, one page per custom parse type, and links from typed parameters
+back to their type pages.
 
 ## Project documentation
 
@@ -236,6 +200,27 @@ deploys it to GitHub Pages from `main`.
 The workflow always validates the docs build. Deployment starts automatically
 after a one-time GitHub setup in `Settings > Pages`: set
 `Build and deployment > Source` to `GitHub Actions`.
+
+## Releasing
+
+Releases are automated with `.github/workflows/release.yml`.
+
+- every push to `main` lets Release Please create or update a release PR
+- the release PR updates `CHANGELOG.md` and the package version metadata
+- merging that release PR creates the `vX.Y.Z` tag and GitHub release
+- the same workflow then re-runs validation, builds `sdist` + `wheel`, uploads
+  them to the GitHub release, and publishes the package to PyPI
+
+For the first public release, the workflow will open a `0.1.0` release PR from
+the existing Conventional Commit history. Review that generated `CHANGELOG.md`
+entry manually before merging so the first public notes read like a curated
+initial release rather than raw bootstrap history.
+
+Repository setup for the release workflow:
+
+- enable `Settings > Actions > General > Allow GitHub Actions to create and approve pull requests`
+- configure a PyPI Trusted Publisher for the `Release` workflow before the first publish
+- optionally add a `RELEASE_PLEASE_TOKEN` secret if you also want CI workflows to run on Release Please PRs
 
 ## Development
 

@@ -6,10 +6,9 @@ from .errors import ConfigError
 
 
 class Scope(str, Enum):
-    STEP = "step"
-    SCENARIO = "scenario"
-    FEATURE = "feature"
     GLOBAL = "global"
+    FEATURE = "feature"
+    SCENARIO = "scenario"
 
     @classmethod
     def parse(cls, value: "Scope | str") -> "Scope":

@@ -9,6 +9,8 @@ from .errors import IntegrationError
 
 _CYCLING_TAG_PATTERN = re.compile(r"cycling\((\d+)\)\Z")
 _EXPANDED_RUNNER_ATTRIBUTE = "_behave_toolkit_cycles_expanded"
+_CYCLE_INDEX_ATTRIBUTE = "_behave_toolkit_cycle_index"
+_CYCLE_COUNT_ATTRIBUTE = "_behave_toolkit_cycle_count"
 
 
 class _SupportsFeatures(Protocol):
@@ -29,6 +31,29 @@ def expand_scenario_cycles(context: object) -> int:
 
     setattr(runner, _EXPANDED_RUNNER_ATTRIBUTE, True)
     return added
+
+
+def get_cycle_progress(subject: object) -> tuple[int, int] | None:
+    """Return `(current_cycle, total_cycles)` for a scenario or context."""
+
+    scenario = _extract_scenario(subject)
+    if scenario is None:
+        return None
+
+    cycle_index = getattr(scenario, _CYCLE_INDEX_ATTRIBUTE, None)
+    cycle_count = getattr(scenario, _CYCLE_COUNT_ATTRIBUTE, None)
+    if isinstance(cycle_index, int) and isinstance(cycle_count, int):
+        return cycle_index, cycle_count
+    return None
+
+
+def format_cycle_progress(subject: object) -> str | None:
+    """Return a readable cycle label like `2/5` for a scenario or context."""
+
+    progress = get_cycle_progress(subject)
+    if progress is None:
+        return None
+    return f"{progress[0]}/{progress[1]}"
 
 
 def _require_runner(context: object) -> _SupportsFeatures:
@@ -64,7 +89,11 @@ def _expand_container(container: ScenarioContainer) -> int:
         expanded_run_items.append(run_item)
         cycle_count = _cycle_count(run_item)
         if cycle_count is None or cycle_count == 1:
+            if cycle_count == 1:
+                _apply_cycle_metadata(run_item, cycle_index=1, cycle_count=1)
             continue
+
+        _apply_cycle_metadata(run_item, cycle_index=1, cycle_count=cycle_count)
 
         for cycle_index in range(2, cycle_count + 1):
             expanded_run_items.append(
@@ -149,7 +178,28 @@ def _clone_scenario(
         background_steps=None,
     )
     clone.feature = scenario.feature
+    _apply_cycle_metadata(clone, cycle_index=cycle_index, cycle_count=cycle_count)
     return clone
+
+
+def _apply_cycle_metadata(
+    scenario: Scenario,
+    *,
+    cycle_index: int,
+    cycle_count: int,
+) -> None:
+    setattr(scenario, _CYCLE_INDEX_ATTRIBUTE, cycle_index)
+    setattr(scenario, _CYCLE_COUNT_ATTRIBUTE, cycle_count)
+
+
+def _extract_scenario(subject: object) -> Scenario | None:
+    if isinstance(subject, Scenario):
+        return subject
+
+    scenario = getattr(subject, "scenario", None)
+    if isinstance(scenario, Scenario):
+        return scenario
+    return None
 
 
 def _scenario_error(scenario: Scenario, message: str) -> IntegrationError:

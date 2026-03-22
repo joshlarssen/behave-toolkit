@@ -10,6 +10,33 @@
 | `variables` | mapping | Reusable literal values referenced with `$var`. |
 | `objects` | mapping | Named object definitions managed by the toolkit. |
 | `parsers` | mapping | Optional Behave parser/type helpers configured at import time. |
+| `logging` | mapping | Optional named logger definitions configured from `before_all()`. |
+
+Most suites can start with just `version`, `variables`, and `objects`.
+`parsers` and `logging` are optional layers for the cases where Behave setup has
+started to become repetitive.
+
+## File or directory input
+
+`install(...)` and `configure_parsers(...)` accept either:
+
+- one YAML file
+- or a dedicated config directory
+
+When you pass a directory, `behave-toolkit` loads every `.yaml` / `.yml` file
+recursively in deterministic path order and merges the known root sections.
+
+```text
+features/
+  behave-toolkit/
+    00-variables.yaml
+    10-parsers.yaml
+    20-objects.yaml
+    30-logging.yaml
+```
+
+Duplicate names across files fail fast. For example, defining the same object or
+logger name twice is treated as a config error instead of “last file wins”.
 
 ## Object fields
 
@@ -45,17 +72,14 @@ The config stays explicit by using dedicated markers instead of hidden magic.
 ```yaml
 version: 1
 variables:
-  event_log: events.log
   report_name: report.json
 
 objects:
-  session_state:
-    factory: my_project.runtime.SessionState
+  artifacts_path:
+    factory: pathlib.Path
     scope: global
-    kwargs:
-      log_path:
-        $var: event_log
-    cleanup: close
+    args:
+      - artifacts
 
   workspace:
     factory: tempfile.TemporaryDirectory
@@ -74,6 +98,13 @@ objects:
     scope: scenario
     args:
       - $ref: workspace_path
+      - $var: report_name
+
+  latest_report_path:
+    factory: pathlib.Path
+    scope: global
+    args:
+      - $ref: artifacts_path
       - $var: report_name
 ```
 
@@ -118,3 +149,52 @@ an enum:
 | `lookup` | Enum helper mode: `value` or `name`. |
 
 See [Parser helpers](parser-helpers.md) for end-to-end examples.
+
+## Logging configuration
+
+If you only want one persistent `test-run.log`, you can skip `logging:`
+entirely and call `configure_test_logging(...)` yourself from `before_all()`.
+
+Use the optional `logging` section when you want multiple named loggers to be
+materialized by `configure_loggers(context)` from `before_all()`.
+
+```yaml
+logging:
+  test_run:
+    path:
+      $ref: test_log_path
+    logger_name: suite-tests
+    inject_as: test_logger
+
+  diagnostics:
+    path:
+      $ref: diagnostics_log_path
+    logger_name: suite-diagnostics
+    inject_as: diagnostics_logger
+    console: false
+```
+
+Each logger supports:
+
+| Field | Purpose |
+| --- | --- |
+| `path` | File path or marker-based value used for the log file. |
+| `logger_name` | Optional underlying Python logger name. Defaults to the logger key. |
+| `inject_as` | Optional Behave context attribute name for the logger object. |
+| `level` | Logging level passed to Python logging. Defaults to `INFO`. |
+| `console` | Mirror output to console in addition to the file. Defaults to `true`. |
+| `mode` | File open mode, for example `w` or `a`. Defaults to `w`. |
+
+`path` supports the same marker style as object arguments:
+
+- `$ref` to a configured object, such as a `pathlib.Path`
+- `$ref` + `attr` for one attribute path
+- `$var` to reuse a root variable
+
+Logger references are intentionally global in this first version, so configure
+them after global objects are active.
+
+- With the default `install(context, CONFIG_PATH)`, global objects are already
+  active, so `configure_loggers(context)` can run immediately after `install()`.
+- If you use `install(..., activate_global=False)`, call
+  `activate_global_scope(context)` first and then `configure_loggers(context)`.

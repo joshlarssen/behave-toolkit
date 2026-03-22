@@ -337,7 +337,7 @@ class LifecycleManagerTests(unittest.TestCase):
         self.assertIn("activate_global_scope(context)", message)
         self.assertIn("before_all", message)
 
-    def test_step_scope_activation_is_not_implemented_yet(self) -> None:
+    def test_step_scope_is_rejected_during_install(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "behave-toolkit.yaml"
             config_path.write_text(
@@ -352,11 +352,12 @@ class LifecycleManagerTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            context = make_context()
-            manager = install(context, config_path)
+            with self.assertRaises(ConfigError) as exc:
+                install(make_context(), config_path)
 
-            with self.assertRaises(NotImplementedError):
-                manager.activate_scope(context, Scope.STEP)
+        message = str(exc.exception)
+        self.assertIn(str(config_path.resolve()), message)
+        self.assertIn("Unsupported scope 'step'", message)
 
 
 if __name__ == "__main__":

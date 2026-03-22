@@ -6,6 +6,9 @@
 project. This is aimed at the *consumer* suite you are testing, not at the
 toolkit repository itself.
 
+You can ignore this feature until your step library is large enough that a
+searchable reference site would genuinely help the team.
+
 After a plain `pip install behave-toolkit`, you can:
 
 1. use the Python API in `features/environment.py` for lifecycle/config wiring
@@ -19,6 +22,22 @@ After a plain `pip install behave-toolkit`, you can:
 ```bash
 behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 ```
+
+If you prefer to drive the generator from Python, the public API is:
+
+```python
+from behave_toolkit import generate_step_docs
+
+result = generate_step_docs(
+    "features",
+    "docs/behave-toolkit",
+    site_title="QA Step Catalog",
+)
+print(result.step_count, result.type_count)
+```
+
+`generate_step_docs(...)` returns a `DocumentationResult` with the output path
+and the number of generated step and type pages.
 
 The generated output includes:
 

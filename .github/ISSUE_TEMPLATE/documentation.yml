@@ -1,0 +1,34 @@
+name: Documentation
+description: Report a docs gap, mistake, or improvement idea.
+title: "[Docs]: "
+labels:
+  - docs
+body:
+  - type: textarea
+    id: page
+    attributes:
+      label: Page or section
+      description: Which page, example, or command is affected?
+      placeholder: README quick start / docs/getting-started.md / release section
+    validations:
+      required: true
+
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or wrong?
+      description: Describe the documentation problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested improvement
+      description: What would make the docs clearer?
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Screenshots, commands, or user context if helpful.
