@@ -2,10 +2,18 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .coverage
+.coverage.*
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.hypothesis/
+.nox/
+.tox/
 .venv/
 build/
 dist/
+coverage.xml
+docs/_build/
+htmlcov/
+pip-wheel-metadata/
 
