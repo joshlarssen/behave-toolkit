@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import tempfile
 import unittest
 from pathlib import Path
@@ -222,6 +223,20 @@ class ConfigLoadingTests(unittest.TestCase):
                     }
                 }
             )
+
+    def test_logging_level_string_is_normalized_during_config_load(self) -> None:
+        config = load_config(
+            {
+                "logging": {
+                    "test_run": {
+                        "path": "artifacts/test-run.log",
+                        "level": "warning",
+                    }
+                }
+            }
+        )
+
+        self.assertEqual(config.logging.loggers["test_run"].level, logging.WARNING)
 
 
 if __name__ == "__main__":
