@@ -17,6 +17,7 @@ The project is deliberately pragmatic:
 - fail-fast validation with dedicated `ConfigError` and `IntegrationError`
   exceptions
 - explicit `$ref` and `$var` markers for dependencies and reusable values
+- opt-in `{{var:name}}` substitution for feature files
 - lifecycle activation helpers for `environment.py`
 - config-driven parser helpers for Behave custom types
 - tag-driven scenario cycling with `@cycling(N)`
@@ -119,6 +120,10 @@ Markers are explicit on purpose:
 - `$ref` + `attr`: inject one attribute path from another object
 - `$var`: inject a named value from the root `variables` section
 
+If you want to reuse those same root variables directly in `.feature` files,
+call `substitute_feature_variables(context)` from `before_all()` after
+`install()`. Feature placeholders use the explicit `{{var:name}}` syntax.
+
 `install()` validates the whole configuration up front. Invalid scopes, bad
 imports, unknown `$ref` / `$var` entries, and object-reference cycles fail fast
 with messages that include the config path and the relevant object field.
@@ -146,6 +151,23 @@ features/
 If your suite uses custom Behave types, `configure_parsers(CONFIG_PATH)` can
 move matcher selection and type registration into the same YAML config. This is
 import-time setup, so keep it at module level in `environment.py`.
+
+### Feature-file variables
+
+If you want to reuse root config values directly in Gherkin, call
+`substitute_feature_variables(context)` after `install(context, CONFIG_PATH)`:
+
+```python
+from behave_toolkit import substitute_feature_variables
+
+
+def before_all(context):
+    install(context, CONFIG_PATH)
+    substitute_feature_variables(context)
+```
+
+This replaces `{{var:name}}` placeholders in feature names, descriptions, step
+text, docstrings, and tables. Tags are intentionally left unchanged.
 
 ### Scenario cycling
 
@@ -184,6 +206,16 @@ python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 The generated pages include grouped step catalogs, one page per step
 definition, one page per custom parse type, and links from typed parameters
 back to their type pages.
+
+If your feature files use `{{var:name}}`, pass the same toolkit config to the
+docs generator so example matching sees the substituted text:
+
+```bash
+behave-toolkit-docs \
+  --features-dir features \
+  --output-dir docs/behave-toolkit \
+  --config-path features/behave-toolkit.yaml
+```
 
 ## Project documentation
 

@@ -34,6 +34,7 @@ from behave_toolkit import (
     load_config,
     load_yaml_file,
     load_yaml_text,
+    substitute_feature_variables,
 )
 ```
 
@@ -50,6 +51,7 @@ from behave_toolkit import (
 | API | Purpose | Typical Behave hook |
 | --- | --- | --- |
 | `install(context, config_path, namespace="toolkit", activate_global=True)` | Load and validate config, attach the manager, and activate global objects. | `before_all` |
+| `substitute_feature_variables(context, namespace="toolkit")` | Replace `{{var:name}}` placeholders in parsed feature models using root config variables. | `before_all` |
 | `expand_scenario_cycles(context)` | Expand tagged plain scenarios that use `@cycling(N)` before feature execution starts. | `before_all` |
 | `configure_parsers(config_path)` | Configure Behave step matcher defaults and register custom types from YAML. | module import time |
 | `configure_test_logging(log_path, logger_name="behave-tests", level="INFO", console=True, console_stream=None, mode="w")` | Configure one dedicated logger for a persistent test-run file plus optional console output. Recommended when one log file is enough. | usually `before_all` |
@@ -70,7 +72,7 @@ enough.
 
 | API | Purpose |
 | --- | --- |
-| `generate_step_docs(features_dir, output_dir, *, site_title="Behave step documentation", max_examples_per_step=3)` | Generate Sphinx-ready step/type reference pages from Python. |
+| `generate_step_docs(features_dir, output_dir, *, site_title="Behave step documentation", max_examples_per_step=3, config_path=None)` | Generate Sphinx-ready step/type reference pages from Python. Pass `config_path` when examples use `{{var:name}}`. |
 | `DocumentationResult` | Return type exposing `output_dir`, `step_count`, and `type_count`. |
 
 ## Cycle inspection helpers

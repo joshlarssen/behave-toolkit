@@ -18,6 +18,7 @@ The current release only supports these three runtime scopes.
 | --- | --- | --- |
 | `expand_scenario_cycles(context)` | `before_all` | Expand tagged plain scenarios that use `@cycling(N)` before any feature runs. |
 | `install(context, config_path, ...)` | `before_all` | Load the config, validate it, attach the manager, and optionally activate global objects. |
+| `substitute_feature_variables(context)` | `before_all` | Replace `{{var:name}}` placeholders in parsed feature models using root config variables. |
 | `configure_test_logging(log_path, ...)` | usually `before_all` | Configure one dedicated test-run logger writing to a chosen file, with optional console output. |
 | `configure_loggers(context, ...)` | usually `before_all` | Materialize loggers from the optional YAML `logging:` section. |
 | `activate_global_scope(context, ...)` | `before_all` | Explicitly activate global objects when you disable `activate_global`. |
@@ -28,6 +29,13 @@ The current release only supports these three runtime scopes.
 `activate_scope(context, Scope.FEATURE)` and friends all route through the same
 generic activation logic. The dedicated helpers are just the friendlier,
 hook-specific wrappers.
+
+If you use both feature-variable substitution and scenario cycling, the clearest
+ordering is:
+
+1. `install(context, CONFIG_PATH)`
+2. `substitute_feature_variables(context)`
+3. `expand_scenario_cycles(context)`
 
 ## Global scope behavior
 
