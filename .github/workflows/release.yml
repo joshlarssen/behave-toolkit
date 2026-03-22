@@ -4,7 +4,13 @@ on:
   push:
     branches:
       - main
+      - release/**
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: Release version to prepare, for example 0.1.0
+        required: false
+        type: string
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
@@ -16,8 +22,123 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
-    name: Manage release PR
+  release-gate:
+    name: Release gate
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+      auto_merge_enabled: ${{ steps.gate.outputs.auto_merge_enabled }}
+      should_prepare: ${{ steps.gate.outputs.should_prepare }}
+      should_finalize: ${{ steps.gate.outputs.should_finalize }}
+      version: ${{ steps.gate.outputs.version }}
+
+    steps:
+      - name: Determine release mode
+        id: gate
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.release_version }}
+        run: |
+          enabled=false
+          auto_merge_enabled=false
+          should_prepare=false
+          should_finalize=false
+          version=""
+
+          if [ "${{ vars.ENABLE_RELEASE_PLEASE }}" = "true" ]; then
+            enabled=true
+          fi
+
+          if [ "${{ vars.ENABLE_RELEASE_AUTOMERGE }}" = "true" ]; then
+            auto_merge_enabled=true
+          fi
+
+          ref_name="${GITHUB_REF_NAME}"
+
+          if [ "${{ github.event_name }}" = "push" ] && [ "$ref_name" = "main" ]; then
+            should_finalize=true
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "$ref_name" =~ ^release/([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            should_prepare=true
+            version="${BASH_REMATCH[1]}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$INPUT_VERSION" ]; then
+            should_prepare=true
+            version="$INPUT_VERSION"
+          fi
+
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+          echo "auto_merge_enabled=$auto_merge_enabled" >> "$GITHUB_OUTPUT"
+          echo "should_prepare=$should_prepare" >> "$GITHUB_OUTPUT"
+          echo "should_finalize=$should_finalize" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+          echo "enabled=$enabled"
+          echo "auto_merge_enabled=$auto_merge_enabled"
+          echo "should_prepare=$should_prepare"
+          echo "should_finalize=$should_finalize"
+          echo "version=$version"
+
+          if [ "$should_prepare" = "false" ] && [ "$should_finalize" = "false" ]; then
+            echo "No release work for this event."
+          elif [ "$enabled" = "false" ]; then
+            echo "Release automation is disabled."
+            echo "Set ENABLE_RELEASE_PLEASE=true after enabling GitHub Actions PR creation or configuring RELEASE_PLEASE_TOKEN."
+          fi
+
+  prepare-release-pr:
+    name: Prepare release PR
+    needs: release-gate
+    if: ${{ needs.release-gate.outputs.enabled == 'true' && needs.release-gate.outputs.should_prepare == 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr: ${{ steps.release.outputs.pr }}
+      version: ${{ needs.release-gate.outputs.version }}
+
+    steps:
+      - name: Run Release Please in PR mode
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN != '' && secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
+          release-as: ${{ needs.release-gate.outputs.version }}
+          skip-github-release: true
+
+  enable-release-automerge:
+    name: Enable auto-merge
+    needs:
+      - release-gate
+      - prepare-release-pr
+    if: ${{ needs.release-gate.outputs.enabled == 'true' && needs.release-gate.outputs.auto_merge_enabled == 'true' && needs.release-gate.outputs.should_prepare == 'true' && needs.release-gate.outputs.version != '0.1.0' && needs.prepare-release-pr.outputs.prs_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Enable auto-merge on the release PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN != '' && secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          PR_JSON: ${{ needs.prepare-release-pr.outputs.pr }}
+        run: |
+          pr_number="$(python - <<'PY'
+          import json
+          import os
+
+          data = json.loads(os.environ["PR_JSON"])
+          print(data["number"])
+          PY
+          )"
+
+          gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --auto --squash
+
+  finalize-release:
+    name: Finalize release
+    needs: release-gate
+    if: ${{ needs.release-gate.outputs.enabled == 'true' && needs.release-gate.outputs.should_finalize == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -25,25 +146,27 @@ jobs:
       version: ${{ steps.release.outputs.version }}
 
     steps:
-      - name: Run Release Please
+      - name: Run Release Please in release mode
         id: release
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN != '' && secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          target-branch: main
+          skip-github-pull-request: true
 
   verify-release:
     name: Verify release
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    needs: finalize-release
+    if: ${{ needs.finalize-release.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.finalize-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -77,9 +200,9 @@ jobs:
   publish-release:
     name: Publish release
     needs:
-      - release-please
+      - finalize-release
       - verify-release
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    if: ${{ needs.finalize-release.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,7 +212,7 @@ jobs:
       - name: Check out release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.finalize-release.outputs.tag_name }}
           fetch-depth: 0
 
       - name: Set up Python
@@ -114,7 +237,7 @@ jobs:
       - name: Upload release artifacts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: gh release upload ${{ needs.release-please.outputs.tag_name }} dist/* --clobber
+        run: gh release upload ${{ needs.finalize-release.outputs.tag_name }} dist/* --clobber
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

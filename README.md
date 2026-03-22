@@ -205,20 +205,31 @@ after a one-time GitHub setup in `Settings > Pages`: set
 
 Releases are automated with `.github/workflows/release.yml`.
 
-- every push to `main` lets Release Please create or update a release PR
+- release preparation starts from a short-lived branch named `release/X.Y.Z`
+- pushing that branch prepares or updates a release PR that targets `main`
 - the release PR updates `CHANGELOG.md` and the package version metadata
-- merging that release PR creates the `vX.Y.Z` tag and GitHub release
-- the same workflow then re-runs validation, builds `sdist` + `wheel`, uploads
-  them to the GitHub release, and publishes the package to PyPI
+- after the PR lands on `main`, the workflow finalizes the tag, GitHub release,
+  package artifacts, and PyPI publication
+- the workflow stays dormant until you set the repository variable
+  `ENABLE_RELEASE_PLEASE=true`
 
-For the first public release, the workflow will open a `0.1.0` release PR from
-the existing Conventional Commit history. Review that generated `CHANGELOG.md`
-entry manually before merging so the first public notes read like a curated
-initial release rather than raw bootstrap history.
+For the first public release, create `release/0.1.0`, let the workflow open the
+release PR, then review that generated `CHANGELOG.md` entry manually before
+merging so the first public notes read like a curated initial release rather
+than raw bootstrap history.
+
+If you also set `ENABLE_RELEASE_AUTOMERGE=true`, the workflow will enable
+auto-merge for release PRs after `0.1.0`. Keep the first release manual.
 
 Repository setup for the release workflow:
 
+- set the repository variable `ENABLE_RELEASE_PLEASE=true` only after the
+  release workflow is actually configured
+- optionally set `ENABLE_RELEASE_AUTOMERGE=true` after enabling repository
+  auto-merge and deciding that non-initial releases may merge automatically
 - enable `Settings > Actions > General > Allow GitHub Actions to create and approve pull requests`
+- enable repository auto-merge if you want later release PRs to merge by
+  themselves once checks pass
 - configure a PyPI Trusted Publisher for the `Release` workflow before the first publish
 - optionally add a `RELEASE_PLEASE_TOKEN` secret if you also want CI workflows to run on Release Please PRs
 
