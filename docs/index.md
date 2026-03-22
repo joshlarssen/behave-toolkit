@@ -9,8 +9,9 @@ Start with the small core:
 - call `install()` from `before_all()`
 - activate `feature` and `scenario` scopes from the matching Behave hooks
 
-Then add optional layers only when you need them: parser helpers, scenario
-cycling, generated step docs, or YAML-defined named loggers.
+Then add optional layers only when you need them: feature-file variables,
+parser helpers, scenario cycling, generated step docs, or YAML-defined named
+loggers.
 
 ```{toctree}
 :hidden:
@@ -115,6 +116,7 @@ execution model behind a heavy framework.
 - config-driven parser helpers with matcher selection and enum shortcuts
 - tag-driven scenario cycling with `@cycling(N)`
 - explicit object references with `$ref` and reusable values with `$var`
+- opt-in `{{var:name}}` substitution inside parsed feature files
 - a small persistent test logger with `configure_test_logging()`, plus optional
   YAML-configured named loggers for larger suites
 - fail-fast `ConfigError` and `IntegrationError` messages

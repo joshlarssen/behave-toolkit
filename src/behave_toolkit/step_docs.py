@@ -30,7 +30,9 @@ from behave.parser import parse_file
 from behave.runner_util import PathManager, exec_file
 from behave.step_registry import registry, setup_step_decorators
 
-from .errors import DocumentationError
+from .config import load_yaml_file
+from .errors import ConfigError, DocumentationError, IntegrationError
+from .feature_variables import substitute_feature_model_variables
 from .internal import callable_source_info, snapshot_type_registries
 
 FIELD_PATTERN = re.compile(r"\{([^}]*)\}")
@@ -177,11 +179,17 @@ def generate_step_docs(
     *,
     site_title: str = "Behave step documentation",
     max_examples_per_step: int = 3,
+    config_path: str | Path | None = None,
 ) -> DocumentationResult:
     """Generate Sphinx-ready documentation sources for a Behave project."""
 
     resolved_features_dir = Path(features_dir).expanduser().resolve()
     resolved_output_dir = Path(output_dir).expanduser().resolve()
+    resolved_config_path = (
+        Path(config_path).expanduser().resolve()
+        if config_path is not None
+        else None
+    )
 
     if max_examples_per_step < 1:
         raise DocumentationError("'max_examples_per_step' must be at least 1.")
@@ -189,6 +197,7 @@ def generate_step_docs(
     catalog = _collect_catalog(
         resolved_features_dir,
         max_examples_per_step=max_examples_per_step,
+        config_path=resolved_config_path,
     )
     _render_catalog(catalog, resolved_output_dir, site_title)
 
@@ -248,7 +257,12 @@ def _preserve_behave_state() -> Iterator[None]:
         factory._current_matcher = saved_current_matcher  # pylint: disable=protected-access
 
 
-def _collect_catalog(features_dir: Path, *, max_examples_per_step: int) -> _Catalog:
+def _collect_catalog(
+    features_dir: Path,
+    *,
+    max_examples_per_step: int,
+    config_path: Path | None,
+) -> _Catalog:
     if not features_dir.is_dir():
         raise DocumentationError(
             f"Behave features directory '{features_dir}' does not exist."
@@ -263,13 +277,20 @@ def _collect_catalog(features_dir: Path, *, max_examples_per_step: int) -> _Cata
     project_root = features_dir.parent
     with _preserve_behave_state():
         _load_behave_project(project_root, features_dir, steps_dir)
+        feature_variables = _load_feature_example_variables(config_path)
         type_docs = _build_type_docs(project_root)
         step_docs = _build_step_docs(project_root, type_docs)
         if not step_docs:
             raise DocumentationError(
                 f"No step definitions were loaded from '{steps_dir}'."
             )
-        _attach_examples(step_docs, features_dir, project_root, max_examples_per_step)
+        _attach_examples(
+            step_docs,
+            features_dir,
+            project_root,
+            max_examples_per_step,
+            feature_variables=feature_variables,
+        )
         _link_types_to_steps(step_docs, type_docs)
 
     return _Catalog(
@@ -298,6 +319,19 @@ def _load_behave_project(project_root: Path, features_dir: Path, steps_dir: Path
         for step_directory in step_directories:
             for step_file in sorted(step_directory.glob("*.py")):
                 _load_step_file(step_file)
+
+
+def _load_feature_example_variables(config_path: Path | None) -> dict[str, Any] | None:
+    if config_path is None:
+        return None
+
+    try:
+        return load_yaml_file(config_path).variables
+    except ConfigError as exc:
+        raise DocumentationError(
+            "Could not load behave-toolkit config "
+            f"'{config_path}' for feature example substitution: {exc}"
+        ) from exc
 
 
 def _discover_step_directories(steps_dir: Path) -> list[Path]:
@@ -647,6 +681,8 @@ def _attach_examples(
     features_dir: Path,
     project_root: Path,
     max_examples_per_step: int,
+    *,
+    feature_variables: dict[str, Any] | None = None,
 ) -> None:
     docs_by_matcher = {
         (
@@ -665,6 +701,15 @@ def _attach_examples(
             raise DocumentationError(
                 f"Could not parse feature file '{feature_file}': {exc}"
             ) from exc
+
+        if feature_variables is not None:
+            try:
+                substitute_feature_model_variables([feature], feature_variables)
+            except IntegrationError as exc:
+                raise DocumentationError(
+                    "Could not substitute behave-toolkit feature variables in "
+                    f"'{feature_file}': {exc}"
+                ) from exc
 
         for scenario in feature.walk_scenarios():
             for step in scenario.all_steps:
@@ -1799,6 +1844,13 @@ def main(argv: list[str] | None = None) -> int:
         default=3,
         help="Maximum number of example step usages to record per step definition.",
     )
+    parser.add_argument(
+        "--config-path",
+        help=(
+            "Optional behave-toolkit config file or directory used to resolve "
+            "{{var:name}} placeholders in feature files."
+        ),
+    )
 
     args = parser.parse_args(argv)
     try:
@@ -1807,6 +1859,7 @@ def main(argv: list[str] | None = None) -> int:
             args.output_dir,
             site_title=args.site_title,
             max_examples_per_step=args.max_examples,
+            config_path=args.config_path,
         )
     except DocumentationError as exc:
         print(str(exc), file=sys.stderr)

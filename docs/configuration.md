@@ -7,7 +7,7 @@
 | Key | Type | Purpose |
 | --- | --- | --- |
 | `version` | `int` | Config format version. Defaults to `1`. |
-| `variables` | mapping | Reusable literal values referenced with `$var`. |
+| `variables` | mapping | Reusable literal values referenced with `$var` in YAML or `{{var:name}}` in feature files. |
 | `objects` | mapping | Named object definitions managed by the toolkit. |
 | `parsers` | mapping | Optional Behave parser/type helpers configured at import time. |
 | `logging` | mapping | Optional named logger definitions configured from `before_all()`. |
@@ -67,6 +67,28 @@ The config stays explicit by using dedicated markers instead of hidden magic.
 | `$ref` + `attr` | Reuse one attribute path from another object. |
 | `$var` | Reuse a root-level variable from the config. |
 
+## Feature-file placeholders
+
+If you want to reuse root variables directly in Gherkin, call
+`substitute_feature_variables(context)` from `before_all()` after `install()`.
+
+Feature placeholders use this syntax:
+
+```gherkin
+Scenario: Login against {{var:environment_name}}
+  Given I open {{var:base_url}}
+```
+
+The helper currently rewrites:
+
+- feature, rule, background, and scenario names
+- description lines
+- step text
+- docstrings
+- table headings and cells, including `Scenario Outline` example tables
+
+Tags are intentionally not rewritten in this first version.
+
 ## Example with references
 
 ```yaml
@@ -119,6 +141,10 @@ Behave context. This catches problems early, including:
 - unknown `$var` names
 - cycles between object references
 - invalid wider-to-narrower scope dependencies
+
+`substitute_feature_variables()` then validates runtime feature placeholders when
+you opt into that helper. Unknown names, circular variable references, and
+non-scalar resolved values fail fast with `IntegrationError`.
 
 ```{tip}
 If you want to inject an instance under a shorter or more domain-specific name,

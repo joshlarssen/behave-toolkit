@@ -23,6 +23,13 @@ After a plain `pip install behave-toolkit`, you can:
 behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 ```
 
+If your feature files use `{{var:name}}`, pass the same toolkit config so step
+examples are resolved before matching:
+
+```bash
+behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit --config-path features/behave-toolkit.yaml
+```
+
 If you prefer to drive the generator from Python, the public API is:
 
 ```python
@@ -32,6 +39,7 @@ result = generate_step_docs(
     "features",
     "docs/behave-toolkit",
     site_title="QA Step Catalog",
+    config_path="features/behave-toolkit.yaml",
 )
 print(result.step_count, result.type_count)
 ```
@@ -63,6 +71,9 @@ pip install behave-toolkit
 behave-toolkit-docs --features-dir features --output-dir docs/behave-toolkit
 python -m sphinx -b html docs/behave-toolkit docs/_build/behave-toolkit
 ```
+
+Keep `--config-path` only if your feature files actually use
+`{{var:name}}` placeholders. Otherwise the default command stays enough.
 
 ## Recommended type-registration pattern
 

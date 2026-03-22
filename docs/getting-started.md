@@ -105,6 +105,22 @@ def before_all(context):
     install(context, CONFIG_PATH)
 ```
 
+If you want to reuse root config variables directly in `.feature` files, call
+`substitute_feature_variables(context)` from `before_all()` after `install()`:
+
+```python
+from behave_toolkit import substitute_feature_variables
+
+
+def before_all(context):
+    install(context, CONFIG_PATH)
+    substitute_feature_variables(context)
+```
+
+Feature placeholders use `{{var:name}}`. They apply to feature/scenario names,
+description lines, step text, docstrings, and tables. Tags are intentionally
+left unchanged.
+
 ## What happens at runtime
 
 1. `install()` loads and validates the YAML file or config directory, attaches
@@ -118,7 +134,9 @@ def before_all(context):
 4. Instances are injected onto the Behave context using either `inject_as` or
    the object name itself.
 5. `configure_parsers()` is optional import-time setup for custom types.
-6. `expand_scenario_cycles()` is an optional `before_all()` helper for
+6. `substitute_feature_variables()` is an optional `before_all()` helper for
+   `{{var:name}}` placeholders in parsed feature files.
+7. `expand_scenario_cycles()` is an optional `before_all()` helper for
    `@cycling(N)`.
 
 ## Optional: keep one persistent test log

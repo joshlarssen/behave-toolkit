@@ -13,6 +13,7 @@ from .config import (
 )
 from .cycles import expand_scenario_cycles, format_cycle_progress, get_cycle_progress
 from .errors import ConfigError, DocumentationError, IntegrationError, ToolkitError
+from .feature_variables import substitute_feature_variables
 from .logging_support import configure_test_logging
 from .parsers import configure_parsers
 from .plugin import (
@@ -56,6 +57,7 @@ __all__ = [
     "load_config",
     "load_yaml_file",
     "load_yaml_text",
+    "substitute_feature_variables",
 ]
 
 __version__ = "0.1.0"

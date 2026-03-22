@@ -123,6 +123,26 @@ class StepDocumentationTests(unittest.TestCase):
             )
             self.assertEqual(len(step_pages), 3)
 
+    def test_generate_step_docs_can_resolve_feature_variables_for_examples(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir)
+            features_dir, config_path = self._write_feature_variable_project(project_root)
+            output_dir = project_root / "docs" / "behave-toolkit"
+            generate_step_docs(
+                features_dir,
+                output_dir,
+                config_path=config_path,
+            )
+
+            step_pages = sorted(
+                path
+                for path in (output_dir / "steps").glob("*.md")
+                if path.name not in {"index.md", "given.md", "when.md", "then.md", "generic.md"}
+            )
+            self.assertEqual(len(step_pages), 1)
+            step_page = step_pages[0].read_text(encoding="utf-8")
+            self.assertIn("`Given I have a active account`", step_page)
+
     def test_generate_step_docs_requires_steps_directory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             features_dir = Path(tmpdir) / "features"
@@ -232,10 +252,47 @@ Feature: Demo step catalog
     Given I have a active account
     When I open 2 tabs
     Then the dashboard is ready
+                """.strip(),
+                encoding="utf-8",
+            )
+        return features_dir
+
+    def _write_feature_variable_project(self, project_root: Path) -> tuple[Path, Path]:
+        features_dir = project_root / "features"
+        steps_dir = features_dir / "steps"
+        steps_dir.mkdir(parents=True)
+
+        (steps_dir / "account_steps.py").write_text(
+            """
+from behave import given
+
+
+@given("I have a active account")
+def step_have_active_account(context):
+    \"\"\"Resolve examples from feature variables.\"\"\"
+    del context
             """.strip(),
             encoding="utf-8",
         )
-        return features_dir
+        (features_dir / "demo.feature").write_text(
+            """
+Feature: Demo variables
+
+  Scenario: Account overview
+    Given I have a {{var:status}} account
+            """.strip(),
+            encoding="utf-8",
+        )
+        config_path = features_dir / "behave-toolkit.yaml"
+        config_path.write_text(
+            """
+version: 1
+variables:
+  status: active
+            """.strip(),
+            encoding="utf-8",
+        )
+        return features_dir, config_path
 
 
 if __name__ == "__main__":
