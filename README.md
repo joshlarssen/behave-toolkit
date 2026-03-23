@@ -293,5 +293,5 @@ python -m pylint src tests test_support.py
 ```
 
 The GitHub Actions CI workflow runs static analysis once on Ubuntu with Python
-3.11, then runs the unit tests in a smaller Ubuntu and Windows matrix for
-Python 3.11 and 3.12.
+3.10, then runs the unit tests in a smaller Ubuntu and Windows matrix for
+Python 3.10, 3.11, and 3.12.
