@@ -7,13 +7,14 @@ name = "behave-toolkit"
 version = "0.1.0"
 description = "Toolkit helpers for Behave test suites."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
   "PyYAML>=6.0",
   "behave>=1.3.3",
-  "Sphinx>=8.2",
+  "Sphinx>=8,<8.2; python_version < '3.11'",
+  "Sphinx>=8.2; python_version >= '3.11'",
   "myst-parser>=4.0",
   "furo>=2024.8.6",
   "sphinx-design>=0.6",
@@ -25,6 +26,7 @@ keywords = ["behave", "bdd", "testing", "qa", "yaml"]
 classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Topic :: Software Development :: Testing",
@@ -55,7 +57,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.10"
 mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
 files = ["src", "tests", "test_support.py"]
 check_untyped_defs = true
@@ -71,7 +73,7 @@ module = ["behave", "behave.*"]
 ignore_missing_imports = true
 
 [tool.pylint.main]
-py-version = "3.11"
+py-version = "3.10"
 jobs = 0
 init-hook = "import sys; from pathlib import Path; sys.path.insert(0, str(Path().resolve() / 'src'))"
 
