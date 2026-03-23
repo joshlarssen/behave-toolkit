@@ -75,6 +75,40 @@ Each entry in `objects` supports the following fields:
 - an installed dependency from the active environment
 - the Python standard library
 
+## Literal constructor values
+
+Yes: `args` and `kwargs` accept direct YAML values out of the box.
+
+Use `$ref` and `$var` only when you want indirection. If you just want to pass
+hard-coded values to the constructor, write them directly:
+
+```yaml
+objects:
+  api_client:
+    factory: demo.clients.ApiClient
+    args:
+      - https://example.test
+      - 30
+    kwargs:
+      verify_ssl: true
+      headers:
+        User-Agent: behave-toolkit-smoke
+```
+
+That is equivalent to:
+
+```python
+ApiClient(
+    "https://example.test",
+    30,
+    verify_ssl=True,
+    headers={"User-Agent": "behave-toolkit-smoke"},
+)
+```
+
+Supported direct values include normal YAML scalars, lists, and mappings. Only
+mappings that use `$ref` or `$var` are treated specially by the toolkit.
+
 ## Scope dependency rules
 
 Objects can depend on wider or same-scope objects, but not on narrower scopes.

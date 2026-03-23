@@ -69,6 +69,19 @@ objects:
 - an installed dependency
 - the Python standard library
 
+`args` and `kwargs` can also use direct YAML values. You only need `$ref` and
+`$var` when you want to reuse another managed object or a root config variable.
+
+```yaml
+objects:
+  api_client:
+    factory: demo.clients.ApiClient
+    kwargs:
+      base_url: https://example.test
+      timeout: 30
+      verify_ssl: true
+```
+
 ## 4. Wire `features/environment.py`
 
 ```python

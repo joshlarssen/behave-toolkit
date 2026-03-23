@@ -81,6 +81,19 @@ objects:
       - $var: report_name
 ```
 
+You can also pass constructor values directly in YAML. Use `$ref` and `$var`
+only when you want indirection:
+
+```yaml
+objects:
+  api_client:
+    factory: demo.clients.ApiClient
+    kwargs:
+      base_url: https://example.test
+      timeout: 30
+      verify_ssl: true
+```
+
 Wire it from `features/environment.py`:
 
 ```python
