@@ -13,7 +13,8 @@ license-files = ["LICENSE"]
 dependencies = [
   "PyYAML>=6.0",
   "behave>=1.3.3",
-  "Sphinx>=8.2",
+  "Sphinx>=8,<8.2; python_version < '3.11'",
+  "Sphinx>=8.2; python_version >= '3.11'",
   "myst-parser>=4.0",
   "furo>=2024.8.6",
   "sphinx-design>=0.6",
