@@ -2,6 +2,8 @@
 
 [<- Back to home](index.md)
 
+This page is the quick reference for the public Python surface. For field-level config semantics, examples, and scope rules, read [Configuration model](configuration.md). For hook ordering, read [Lifecycle hooks](lifecycle.md).
+
 ## Main import surface
 
 ```python
@@ -24,8 +26,8 @@ from behave_toolkit import (
     activate_scenario_scope,
     activate_scope,
     configure_loggers,
-    configure_test_logging,
     configure_parsers,
+    configure_test_logging,
     expand_scenario_cycles,
     format_cycle_progress,
     generate_step_docs,
@@ -62,10 +64,7 @@ from behave_toolkit import (
 | `activate_scope(context, scope, namespace="toolkit")` | Generic wrapper for scope activation. | advanced usage |
 
 ```{tip}
-The smallest recommended runtime path is `install()` plus the feature/scenario
-activation helpers. Add `configure_test_logging()` if you want one persistent
-suite log. Reach for `configure_loggers()` only when one file is no longer
-enough.
+The smallest recommended runtime path is `install()` plus the feature and scenario activation helpers. Add `configure_test_logging()` if you want one persistent suite log. Reach for `configure_loggers()` only when one file is no longer enough.
 ```
 
 ## Documentation generation API
@@ -79,7 +78,7 @@ enough.
 
 | API | Purpose | Typical use |
 | --- | --- | --- |
-| `get_cycle_progress(subject)` | Return `(current_cycle, total_cycles)` for a scenario or Behave context. | hook logic or assertions |
+| `get_cycle_progress(subject)` | Return `(current_cycle, total_cycles)` for a scenario or context. | hook logic or assertions |
 | `format_cycle_progress(subject)` | Return a display-ready label like `2/5`. | logging and progress output |
 
 ## Manager methods you will usually care about
@@ -116,7 +115,5 @@ enough.
 | `Scope` | Scope enum used across config normalization and activation (`global`, `feature`, `scenario`). |
 
 ```{note}
-The project intentionally keeps the public API surface small. The main contract
-is the set of installation helpers plus the manager attached to the Behave
-context.
+The project intentionally keeps the public API surface small. The main contract is the set of installation helpers plus the manager attached to the Behave context.
 ```

@@ -2,23 +2,40 @@
 
 [<- Back to home](index.md)
 
-## Install the package
+This page shows the smallest useful integration first. If you want full recipes that combine several optional helpers, continue with [Integration examples](integration-examples.md).
+
+## Before you start
+
+- You already have a Behave project with a `features/` directory.
+- You want to keep `environment.py` explicit instead of hiding setup behind a large plugin layer.
+- You are running on a supported Python version. See [Compatibility and support](compatibility.md).
+
+## 1. Install the package
 
 ```bash
 pip install behave-toolkit
 ```
 
-This single install gives you:
+That single install gives you:
 
 - the runtime helpers used from `features/environment.py`
 - the `behave-toolkit-docs` CLI
-- the Sphinx dependencies needed to build generated HTML documentation
+- the Sphinx dependencies needed to build generated HTML step documentation
 
-## Create a toolkit config
+## 2. Create a minimal project layout
 
-The config format is intentionally small. Start with root `variables` and
-`objects`, then add `parsers` or `logging` only if your suite really needs
-those extras.
+```text
+features/
+  behave-toolkit.yaml
+  environment.py
+  steps/
+    reporting_steps.py
+  smoke.feature
+```
+
+## 3. Create a toolkit config
+
+Start with one variable, one feature-scoped resource, and one scenario-scoped path built from it:
 
 ```yaml
 version: 1
@@ -46,11 +63,13 @@ objects:
       - $var: report_name
 ```
 
-For larger suites, you can split that config into a dedicated
-`behave-toolkit/` directory and point `CONFIG_PATH` at the directory instead of
-one file.
+`factory` can point to:
 
-## Wire the toolkit from `environment.py`
+- your own project code
+- an installed dependency
+- the Python standard library
+
+## 4. Wire `features/environment.py`
 
 ```python
 from pathlib import Path
@@ -78,103 +97,112 @@ def before_scenario(context, scenario):
     activate_scenario_scope(context)
 ```
 
-That minimal flow is the recommended starting point.
+This is the core runtime path:
 
-## Add optional helpers only when needed
+- `install()` loads and validates the config, attaches the manager under `context.toolkit`, and activates `global` objects by default
+- `activate_feature_scope()` creates feature-scoped objects inside `before_feature`
+- `activate_scenario_scope()` creates scenario-scoped objects inside `before_scenario`
+- cleanup is registered with Behave so each scope tears down at the right time automatically
 
-If you use custom Behave types, register them at import time:
+## 5. Use the injected objects from a step
+
+If you do not set `inject_as`, the object name becomes the context attribute name.
+
+```python
+from behave import then
+
+
+@then("the report path is available")
+def step_report_path_available(context):
+    context.report_path.write_text("ready\n", encoding="utf-8")
+    assert context.report_path.exists()
+```
+
+And a matching feature file can stay completely ordinary:
+
+```gherkin
+Feature: Toolkit smoke
+
+  Scenario: Use toolkit-managed objects
+    Then the report path is available
+```
+
+## 6. Run Behave
+
+```bash
+behave
+```
+
+At runtime the flow is:
+
+1. `before_all()` installs the toolkit and creates `global` objects.
+2. `before_feature()` creates feature-scoped objects.
+3. `before_scenario()` creates scenario-scoped objects.
+4. Steps use the injected instances through `context`.
+5. Behave cleanup tears objects down in reverse creation order at the matching scope boundary.
+
+## 7. Add optional helpers only when you need them
+
+| If you need... | Helper | When it runs | Where it belongs |
+| --- | --- | --- | --- |
+| Behave custom type registration from YAML | `configure_parsers(CONFIG_PATH)` | import time | top-level in `environment.py`, before step modules load |
+| root config variables directly in `.feature` files | `substitute_feature_variables(context)` | `before_all` | after `install()` |
+| repeated runs of one plain scenario | `expand_scenario_cycles(context)` | `before_all` | after `install()`, and after feature-variable substitution if you use both |
+| one persistent suite log | `configure_test_logging(...)` | usually `before_all` | after `install()` so your path objects already exist |
+| several named logs from YAML | `configure_loggers(context)` | usually `before_all` | after `install()` so global objects already exist |
+
+## 8. Full hook template with optional helpers
+
+Use this as the starting point when your suite grows beyond the minimal path:
 
 ```python
 from pathlib import Path
 
-from behave_toolkit import configure_parsers
+from behave_toolkit import (
+    activate_feature_scope,
+    activate_scenario_scope,
+    configure_parsers,
+    configure_test_logging,
+    expand_scenario_cycles,
+    install,
+    substitute_feature_variables,
+)
 
-CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
+CONFIG_PATH = Path(__file__).with_name("behave-toolkit")
+
+# Optional: only useful when your config defines a `parsers:` section.
 configure_parsers(CONFIG_PATH)
-```
-
-If you want to replay a plain scenario several times, expand cycle tags from
-`before_all()`:
-
-```python
-from behave_toolkit import expand_scenario_cycles
-
-
-def before_all(context):
-    expand_scenario_cycles(context)
-    install(context, CONFIG_PATH)
-```
-
-If you want to reuse root config variables directly in `.feature` files, call
-`substitute_feature_variables(context)` from `before_all()` after `install()`:
-
-```python
-from behave_toolkit import substitute_feature_variables
 
 
 def before_all(context):
     install(context, CONFIG_PATH)
+
+    # Optional: enable `{{var:name}}` placeholders in parsed feature files.
     substitute_feature_variables(context)
-```
 
-Feature placeholders use `{{var:name}}`. They apply to feature/scenario names,
-description lines, step text, docstrings, and tables. Tags are intentionally
-left unchanged.
+    # Optional: expand `@cycling(N)` tags on plain scenarios.
+    expand_scenario_cycles(context)
 
-## What happens at runtime
-
-1. `install()` loads and validates the YAML file or config directory, attaches
-   the manager under `context.toolkit`, and activates global objects by
-   default. In the normal flow that means global objects are created from
-   `before_all()` and cleaned automatically at the very end of the Behave run.
-2. `activate_feature_scope()` creates feature-scoped objects and registers
-   cleanup with Behave.
-3. `activate_scenario_scope()` creates scenario-scoped objects and registers
-   cleanup with Behave.
-4. Instances are injected onto the Behave context using either `inject_as` or
-   the object name itself.
-5. `configure_parsers()` is optional import-time setup for custom types.
-6. `substitute_feature_variables()` is an optional `before_all()` helper for
-   `{{var:name}}` placeholders in parsed feature files.
-7. `expand_scenario_cycles()` is an optional `before_all()` helper for
-   `@cycling(N)`.
-
-## Optional: keep one persistent test log
-
-If your config exposes a path object such as `test_log_path`, you can keep test
-logging explicit in `environment.py` with the small manual helper:
-
-```python
-from behave_toolkit import configure_test_logging
-
-
-def before_all(context):
-    install(context, CONFIG_PATH)
+    # Optional: keep one persistent suite log.
+    # Remove this line if your config does not define `test_log_path`.
     context.test_logger = configure_test_logging(context.test_log_path)
+
+
+def before_feature(context, feature):
+    del feature
+    activate_feature_scope(context)
+
+
+def before_scenario(context, scenario):
+    del scenario
+    activate_scenario_scope(context)
 ```
 
-This is the recommended logging setup for most suites: one predictable
-`test-run.log` file, plus optional console output.
+If `CONFIG_PATH` points to a directory instead of a single file, use `Path(__file__).with_name("behave-toolkit")` or any other directory path that suits your project layout.
 
-Combine it with `format_cycle_progress(scenario)` if you want messages like
-`Cycle 3/10 -> Billing burst [cycle 3/10]`.
+## Next steps
 
-If you later need several named outputs defined in YAML, add a `logging:`
-section and call `configure_loggers(context)`. That is intentionally optional,
-not the default recommendation.
-
-If you want to make the global lifetime more explicit, use
-`install(..., activate_global=False)` and call `activate_global_scope(context)`
-from `before_all()` yourself. The lifetime stays the same: created once for the
-whole run, cleaned once at the end.
-
-## Good first follow-ups
-
-- Read [Configuration model](configuration.md) to understand the object schema.
-- Read [Parser helpers](parser-helpers.md) if you want to configure custom
-  Behave types from YAML.
-- Read [Scenario cycling](scenario-cycling.md) if you want to replay a tagged
-  plain scenario multiple times.
-- Read [Lifecycle hooks](lifecycle.md) to understand hook order and cleanup.
-- Read [Step documentation](step-documentation.md) if you want a reference site
-  for your own step library.
+- Read [Integration examples](integration-examples.md) for copy-paste multi-feature setups.
+- Read [Configuration model](configuration.md) for the full schema and scope rules.
+- Read [Lifecycle hooks](lifecycle.md) for exact hook timing and cleanup behavior.
+- Read [Troubleshooting](troubleshooting.md) if `install()` or one of the optional helpers fails.
