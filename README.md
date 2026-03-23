@@ -28,6 +28,18 @@ The project is deliberately pragmatic:
 Project documentation for `behave-toolkit` itself lives in `docs/` and is meant
 to be published on GitHub Pages.
 
+If you are new to the project, the most useful pages are:
+
+- `docs/getting-started.md` for the smallest working setup
+- `docs/integration-examples.md` for copy-paste multi-feature recipes
+- `docs/compatibility.md` for the supported Python and Behave story
+- `docs/troubleshooting.md` for common config and hook-order failures
+
+Current support snapshot:
+
+- Python `3.10`, `3.11`, and `3.12`
+- `behave>=1.3.3`
+
 ## Quick start
 
 Install the package:
@@ -67,6 +79,19 @@ objects:
     args:
       - $ref: workspace_path
       - $var: report_name
+```
+
+You can also pass constructor values directly in YAML. Use `$ref` and `$var`
+only when you want indirection:
+
+```yaml
+objects:
+  api_client:
+    factory: demo.clients.ApiClient
+    kwargs:
+      base_url: https://example.test
+      timeout: 30
+      verify_ssl: true
 ```
 
 Wire it from `features/environment.py`:
@@ -234,6 +259,8 @@ after a one-time GitHub setup in `Settings > Pages`: set
 `Build and deployment > Source` to `GitHub Actions`.
 
 ## Releasing
+
+For the maintainer-focused step-by-step flow, see `docs/release-guide.md`.
 
 Releases are automated with `.github/workflows/release.yml`.
 

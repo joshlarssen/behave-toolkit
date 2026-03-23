@@ -2,8 +2,21 @@
 
 [<- Back to home](index.md)
 
-`behave-toolkit` can replay a tagged plain scenario multiple times with a
-single helper call in `before_all()`.
+`behave-toolkit` can replay a tagged plain scenario multiple times with one helper call in `before_all()`.
+
+## When to use it
+
+Use `@cycling(N)` when you want to rerun the exact same plain scenario body several times while keeping:
+
+- separate `before_scenario` and `after_scenario` hook execution for each run
+- separate scenario-scoped object creation and cleanup for each run
+- separate report entries so failures stay attributable
+
+If you need data-driven combinations, keep using `Scenario Outline` with `Examples`.
+
+```{warning}
+`@cycling(N)` is intentionally limited to plain `Scenario` items. It does not support `Scenario Outline`.
+```
 
 ## Basic usage
 
@@ -35,8 +48,8 @@ CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
 
 
 def before_all(context):
-    expand_scenario_cycles(context)
     install(context, CONFIG_PATH)
+    expand_scenario_cycles(context)
 
 
 def before_feature(context, feature):
@@ -49,39 +62,34 @@ def before_scenario(context, scenario):
     activate_scenario_scope(context)
 ```
 
-`expand_scenario_cycles(context)` is safe to leave wired in even if no scenario
-uses `@cycling(...)`. In that case it is a no-op.
+If you also use `substitute_feature_variables(context)`, call it before `expand_scenario_cycles(context)` so the cloned scenarios inherit already-substituted text.
+
+`expand_scenario_cycles(context)` is safe to leave wired in even if no scenario uses `@cycling(...)`. In that case it is a no-op.
 
 ## What it does
 
-Before Behave starts running features, the helper expands a tagged scenario into
-multiple scenario executions:
+Before Behave starts running features, the helper expands a tagged scenario into multiple scenario executions:
 
 - the original scenario still runs once
 - additional runs are appended with names like `[cycle 2/3]`
-- each cycle gets its own `before_scenario` / `after_scenario` hook flow
+- each cycle gets its own `before_scenario` and `after_scenario` hook flow
 - scenario-scoped objects are created and cleaned up for each replay
 
-This keeps lifecycle behavior explicit instead of hiding retries or loops inside
-step code.
+This keeps lifecycle behavior explicit instead of hiding retries or loops inside step code.
 
 ## Reporting behavior
 
-Cycle replays appear as separate scenarios in Behave output and formatter
-reports. That is intentional: if cycle 2 fails and cycle 1 passes, you can see
-which replay failed.
+Cycle replays appear as separate scenarios in Behave output and formatter reports. That is intentional: if cycle 2 fails and cycle 1 passes, you can see exactly which replay failed.
 
-`expand_scenario_cycles(context)` returns the number of extra scenario runs that
-were added. That can be useful if you want a short bootstrap log in
-`before_all()`.
+`expand_scenario_cycles(context)` returns the number of extra scenario runs that were added. That can be useful if you want a short bootstrap log in `before_all()`.
 
 ## Logging cycle progress
 
-If you want readable progress like `1/1000`, use the cycle metadata helpers in
-your hooks. If your config exposes a path object such as `test_log_path`, the
-simplest setup is one persistent test log:
+If you want readable progress like `2/10`, combine scenario cycling with the small logging helper.
 
 ```python
+from pathlib import Path
+
 from behave_toolkit import (
     activate_scenario_scope,
     configure_test_logging,
@@ -90,10 +98,12 @@ from behave_toolkit import (
     install,
 )
 
+CONFIG_PATH = Path(__file__).with_name("behave-toolkit.yaml")
+
 
 def before_all(context):
-    added = expand_scenario_cycles(context)
     install(context, CONFIG_PATH)
+    added = expand_scenario_cycles(context)
     context.test_logger = configure_test_logging(context.test_log_path)
     context.test_logger.info("Expanded %s extra cycle runs", added)
 
@@ -112,33 +122,10 @@ def before_scenario(context, scenario):
         )
 ```
 
-`configure_test_logging(...)` is deliberately small and explicit:
+`format_cycle_progress(subject)` is the shorter helper when you only want a display-ready label such as `2/10`.
 
-- it writes to a dedicated file path that you choose
-- it can mirror the same messages to console
-- it resets existing handlers for the chosen logger name, which makes repeated
-  local runs predictable
+## Failure modes
 
-You can build persistent artifact paths with normal toolkit objects, for
-example global `pathlib.Path` instances like `test_log_path` or
-`latest_report_path`.
+Invalid tags such as `@cycling(foo)` fail fast with an `IntegrationError` pointing at the offending scenario location.
 
-`format_cycle_progress(subject)` is the shorter logging helper. Use
-`get_cycle_progress(subject)` when you want the raw tuple for assertions,
-metrics, or your own message formatting.
-
-If you later need several named log files, the optional YAML `logging:` section
-plus `configure_loggers(context)` is also available. Keep that as an upgrade
-path rather than the default.
-
-## Scope and limits
-
-`@cycling(N)` is intentionally limited to plain `Scenario` items.
-
-- Use it when you want to replay the same scenario body several times.
-- Do **not** use it on `Scenario Outline`.
-- If you need data-driven combinations, keep using `Scenario Outline` with
-  `Examples`.
-
-Invalid tags such as `@cycling(foo)` fail fast with an `IntegrationError`
-pointing at the offending scenario location.
+If you accidentally put `@cycling(...)` on a `Scenario Outline`, the error explicitly tells you to use `Examples` instead.
