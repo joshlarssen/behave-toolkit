@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/joshlarssen/behave-toolkit/compare/behave-toolkit-v0.1.0...behave-toolkit-v0.2.0) (2026-04-07)
+
+
+### Features
+
+* support feature-file variables ([#8](https://github.com/joshlarssen/behave-toolkit/issues/8)) ([9d79403](https://github.com/joshlarssen/behave-toolkit/commit/9d794030411de05febc1183d0c72a12f66db23d0))
+
+
+### Documentation
+
+* overhaul project documentation ([#13](https://github.com/joshlarssen/behave-toolkit/issues/13)) ([4df4692](https://github.com/joshlarssen/behave-toolkit/commit/4df4692d695ab30518cef0b3f318ff47c34fe462))
+* publish versioned release docs ([#14](https://github.com/joshlarssen/behave-toolkit/issues/14)) ([0490cf7](https://github.com/joshlarssen/behave-toolkit/commit/0490cf7b550693f8924dfe007da40f27d7137b21))
+
 ## 0.1.0 (2026-03-22)
 
 
@@ -22,5 +35,3 @@
 ### Documentation
 
 * add GitHub Pages project site ([7979307](https://github.com/joshlarssen/behave-toolkit/commit/7979307a7878b8344d092d0801a0758567cad8d8))
-
-
