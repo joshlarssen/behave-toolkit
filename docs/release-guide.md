@@ -64,6 +64,10 @@ It then:
 5. validates them with `python -m twine check dist/*`
 6. uploads the artifacts to the GitHub release
 7. publishes the package to PyPI through Trusted Publishing
+8. rebuilds and publishes the versioned GitHub Pages site from released docs tags
+
+The published docs site keeps one directory per released documentation version,
+plus a `latest/` alias that points to the newest release.
 
 ## First release vs later releases
 
@@ -76,6 +80,7 @@ After the workflow succeeds, verify all of the following:
 - the GitHub tag exists
 - the GitHub release exists and contains the built artifacts
 - the new package version is visible on PyPI
+- the docs site shows the new version and `latest/` points to it
 - the changelog on `main` reflects the published release
 
 If the release included user-facing behavior changes, also make sure the docs site and README still reflect the new reality.

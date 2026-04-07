@@ -252,11 +252,14 @@ python -m sphinx -W --keep-going -b html docs docs/_build/html
 ```
 
 A dedicated GitHub Actions workflow builds this site on pull requests and
-deploys it to GitHub Pages from `main`.
+A dedicated GitHub Actions workflow builds this site on pull requests, and the
+release workflow publishes the versioned documentation site to GitHub Pages.
 
-The workflow always validates the docs build. Deployment starts automatically
-after a one-time GitHub setup in `Settings > Pages`: set
-`Build and deployment > Source` to `GitHub Actions`.
+The published Pages site is versioned by release. The root URL opens `latest`,
+and released versions stay available under their own versioned paths.
+
+Deployment starts automatically after a one-time GitHub setup in
+`Settings > Pages`: set `Build and deployment > Source` to `GitHub Actions`.
 
 ## Releasing
 

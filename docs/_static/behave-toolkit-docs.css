@@ -23,3 +23,25 @@
 .bd-content table th code {
   white-space: nowrap;
 }
+
+.version-switcher-container {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+}
+
+.version-switcher-select {
+  width: 100%;
+  margin-top: 0.35rem;
+  border: 1px solid var(--color-sidebar-search-border);
+  border-radius: 0.5rem;
+  background: var(--color-background-primary);
+  color: var(--color-foreground-primary);
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+}
+
+.version-switcher-current {
+  margin: 0.45rem 0 0;
+  color: var(--color-foreground-secondary);
+  font-size: 0.85rem;
+}
