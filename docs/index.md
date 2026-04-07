@@ -146,6 +146,9 @@ This site documents the `behave-toolkit` package itself.
 
 The package also generates documentation for downstream Behave suites via `behave-toolkit-docs`. That generated output is a separate concern and is documented in [Step documentation](step-documentation.md).
 
+The published GitHub Pages site is versioned by release, with `latest` pointing
+at the newest released documentation set.
+
 ```{note}
 The currently supported runtime scopes are `global`, `feature`, and `scenario`.
 Scenario cycling is orthogonal: it multiplies scenario executions, not object scopes.

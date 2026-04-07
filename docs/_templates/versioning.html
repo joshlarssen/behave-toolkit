@@ -1,0 +1,25 @@
+{%- if versions and versions.releases %}
+<div class="sidebar-tree version-switcher-container">
+  <div class="sidebar-caption-text">Released versions</div>
+  <label class="sr-only" for="version-switcher">Select documentation version</label>
+  <select
+    id="version-switcher"
+    class="version-switcher-select"
+    onchange="if (this.value) window.location.href = this.value;"
+  >
+    {%- for item in versions.releases|version_sort %}
+    <option
+      value="{{ item.url }}"
+      {%- if current_version and item.name == current_version.name %} selected{%- endif %}
+    >
+      {{ item.name|version_label }}
+    </option>
+    {%- endfor %}
+  </select>
+  {%- if current_version %}
+  <p class="version-switcher-current">
+    Current: <strong>{{ current_version.name|version_label }}</strong>
+  </p>
+  {%- endif %}
+</div>
+{%- endif %}
